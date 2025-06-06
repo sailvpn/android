@@ -8,7 +8,8 @@ import androidx.lifecycle.ViewModel
 class ProxySettingsViewModel : ViewModel() {
     var serverDomain by mutableStateOf("")
     var serverPort by mutableStateOf("")
-    var isProxyRunning by mutableStateOf(false) // To reflect service state
+    var sharedSecret by mutableStateOf("") // New field for the secret
+    var isProxyRunning by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
 
     fun onDomainChange(newDomain: String) {
@@ -17,19 +18,31 @@ class ProxySettingsViewModel : ViewModel() {
     }
 
     fun onPortChange(newPort: String) {
-        // Allow only digits and limit length for a typical port
         if (newPort.all { it.isDigit() } && newPort.length <= 5) {
             serverPort = newPort
             validateInputs()
         }
     }
 
+    fun onSecretChange(newSecret: String) {
+        sharedSecret = newSecret
+        // You might add validation for the secret here if needed
+        // For example, if it cannot be empty when a certain proxy type is selected.
+        // For now, we'll assume it can be empty or has no specific format validation.
+        validateInputs() // Re-run validation if secret affects button enablement
+    }
+
     private fun validateInputs() {
+        // Basic validation - you might want to adjust this based on the secret's requirements
         if (serverDomain.isBlank() || serverPort.isBlank()) {
             errorMessage = "Domain and Port cannot be empty."
         } else if (serverPort.toIntOrNull() == null || serverPort.toInt() !in 1..65535) {
             errorMessage = "Invalid Port number."
-        } else {
+        }
+        // else if (sharedSecret.isBlank()){ // Example: if secret was mandatory
+        //     errorMessage = "Secret cannot be empty."
+        // }
+        else {
             errorMessage = null
         }
     }
@@ -37,16 +50,13 @@ class ProxySettingsViewModel : ViewModel() {
     fun startProxyService() {
         validateInputs()
         if (errorMessage == null) {
-            // TODO: This is where you would actually start your Android Service
-            // For now, we'll just toggle the state and simulate
-            println("Attempting to start proxy with Domain: $serverDomain, Port: $serverPort")
-            isProxyRunning = true // In a real app, this would be updated by the Service
+            println("Attempting to start proxy with Domain: $serverDomain, Port: $serverPort, Secret: $sharedSecret")
+            isProxyRunning = true
         }
     }
 
     fun stopProxyService() {
-        // TODO: This is where you would stop your Android Service
         println("Stopping proxy service")
-        isProxyRunning = false // In a real app, this would be updated by the Service
+        isProxyRunning = false
     }
 }
