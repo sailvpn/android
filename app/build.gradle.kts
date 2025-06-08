@@ -40,12 +40,21 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2023.08.00")) // Use the latest BOM
+
+    val composeBom = platform("androidx.compose:compose-bom:2024.05.00") // Use latest BOM version
+    implementation(composeBom)
+    androidTestImplementation(composeBom)
+    // Your other Compose dependencies (no need to specify versions if using BOM for them)
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.material3:material3") // If using Material 3
+    implementation("androidx.compose.material:material")   // If using Material 2 (M2 icons often used with M3 too)
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2") // For ViewModel
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    // Material Icons (still need this explicitly if not covered by a very specific BOM setup)
+    implementation("androidx.compose.material:material-icons-core:1.7.0-beta01")
+    implementation("androidx.compose.material:material-icons-extended:1.7.0-beta01")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1") // For ViewModel
+
     // ... other dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
