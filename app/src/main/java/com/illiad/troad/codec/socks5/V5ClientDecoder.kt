@@ -1,4 +1,4 @@
-package com.illiad.troad.codec.v5
+package com.illiad.troad.codec.socks5
 
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil
@@ -18,8 +18,7 @@ import io.netty.handler.codec.socksx.v5.Socks5Message
  * other handler can remove or replace this decoder later.  On failed decode, this decoder will
  * discard the received data, so that other handler closes the connection later.
  */
-class V5ClientDecoder(private val v5AddressDecoder: V5AddressDecoder) :
-    ReplayingDecoder<V5ClientDecoder.State?>(
+class V5ClientDecoder: ReplayingDecoder<V5ClientDecoder.State?>(
         State.INIT
     ) {
     override fun decode(ctx: ChannelHandlerContext, buf: ByteBuf, out: MutableList<Any?>) {
@@ -36,7 +35,7 @@ class V5ClientDecoder(private val v5AddressDecoder: V5AddressDecoder) :
                         val status = Socks5CommandStatus.valueOf(buf.readByte())
                         buf.skipBytes(1) // Reserved
                         val addrType = Socks5AddressType.valueOf(buf.readByte())
-                        val addr = v5AddressDecoder.decodeAddress(addrType, buf)
+                        val addr = V5AddressDecoder.decodeAddress(addrType, buf)
                         val port = ByteBufUtil.readUnsignedShortBE(buf)
 
                         out.add(DefaultSocks5CommandResponse(status, addrType, addr, port))

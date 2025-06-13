@@ -1,4 +1,4 @@
-package com.illiad.troad.handler.v5
+package com.illiad.troad.handler.socks5
 
 import com.illiad.troad.HandlerNamer
 import com.illiad.troad.handler.Utils.closeOnFlush
