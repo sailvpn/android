@@ -1,4 +1,4 @@
-package com.illiad.troad.security
+package com.illiad.troad.service.security
 
 interface Secret {
     @get:Throws(Exception::class)

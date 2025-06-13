@@ -1,4 +1,4 @@
-package com.illiad.troad.security
+package com.illiad.troad.service.security
 
 enum class Cryptos(value: String) {
     SHA_224("SHA-224"),

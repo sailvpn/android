@@ -1,7 +1,7 @@
-package com.illiad.troad.security
+package com.illiad.troad.service.security
 
-import android.content.res.Resources
 import com.illiad.troad.R
+import com.illiad.troad.service.Rss
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.util.Random
@@ -13,27 +13,19 @@ object SecretImp : Secret {
     override var secret: ByteArray? = null
         get() {
             val digest =
-                MessageDigest.getInstance(
-                    Cryptos.valueOf(
-                        Resources.getSystem().getString(R.string.crypto)
-                    ).value!!
-                )
-            return digest.digest(
-                Resources.getSystem().getString(R.string.secret).encodeToByteArray()
-            )
+                MessageDigest.getInstance(Cryptos.valueOf(Rss.getString(R.string.crypto)).value!!)
+            return digest.digest(Rss.getString(R.string.secret).encodeToByteArray())
         }
 
     override var cryptoType: Cryptos? = null
-        get() = Cryptos.valueOf(Resources.getSystem().getString(R.string.crypto))
+        get() = Cryptos.valueOf(Rss.getString(R.string.crypto))
 
     override var cryptoTypeByte: Byte? = null
-        get() = CryptoByte.toByte(Cryptos.valueOf(Resources.getSystem().getString(R.string.crypto)))
+        get() = CryptoByte.toByte(Cryptos.valueOf(Rss.getString(R.string.crypto)))
 
     override var cryptoLength: Short? = null
         get() = CryptoByte.byteLength(
-            Cryptos.valueOf(
-                Resources.getSystem().getString(R.string.crypto)
-            )
+            Cryptos.valueOf(Rss.getString(R.string.crypto))
         )
 
     override fun offset(): ByteArray {

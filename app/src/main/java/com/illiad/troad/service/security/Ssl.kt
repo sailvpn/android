@@ -1,7 +1,7 @@
-package com.illiad.troad.security
+package com.illiad.troad.service.security
 
-import android.content.res.Resources
 import com.illiad.troad.R
+import com.illiad.troad.service.Rss
 import io.netty.handler.ssl.SslContext
 import io.netty.handler.ssl.SslContextBuilder
 import java.io.File
@@ -15,12 +15,11 @@ object Ssl {
 
     init {
         // Load the trust store
-        val ts = KeyStore.getInstance(Resources.getSystem().getString(R.string.trust_store_type))
-        val trustStoreFile = File(Resources.getSystem().getString(R.string.trust_store))
+        val ts = KeyStore.getInstance(Rss.getString(R.string.trust_store_type))
+        val trustStoreFile = File(Rss.getString(R.string.trust_store))
         FileInputStream(trustStoreFile).use { `is` ->
             ts.load(
-                `is`,
-                Resources.getSystem().getString(R.string.trust_store_password).toCharArray()
+                `is`, Rss.getString(R.string.trust_store_password).toCharArray()
             )
         }
         // Initialize TrustManagerFactory with the trust store

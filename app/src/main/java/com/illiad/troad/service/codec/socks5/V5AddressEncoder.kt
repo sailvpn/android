@@ -1,4 +1,4 @@
-package com.illiad.troad.codec.socks5
+package com.illiad.troad.service.codec.socks5
 
 import io.netty.buffer.ByteBuf
 import io.netty.handler.codec.EncoderException

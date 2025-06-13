@@ -1,6 +1,6 @@
-package com.illiad.troad.service
+package com.illiad.troad.service.codec
 
-import com.illiad.troad.security.SecretImp
+import com.illiad.troad.service.security.SecretImp
 import io.netty.buffer.ByteBuf
 
 /**

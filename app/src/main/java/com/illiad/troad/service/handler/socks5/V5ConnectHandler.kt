@@ -1,12 +1,12 @@
-package com.illiad.troad.handler.socks5
+package com.illiad.troad.service.handler.socks5
 
-import com.illiad.troad.HandlerNamer
-import com.illiad.troad.handler.Utils.closeOnFlush
+import com.illiad.troad.service.HandlerNamer
+import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.R
-import com.illiad.troad.Rss
-import com.illiad.troad.codec.socks5.V5ClientDecoder
-import com.illiad.troad.codec.socks5.V5ClientEncoder
-import com.illiad.troad.security.Ssl
+import com.illiad.troad.service.Rss
+import com.illiad.troad.service.codec.socks5.V5ClientDecoder
+import com.illiad.troad.service.codec.socks5.V5ClientEncoder
+import com.illiad.troad.service.security.Ssl
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.*
 import io.netty.channel.socket.SocketChannel
@@ -53,13 +53,13 @@ class V5ConnectHandler : SimpleChannelInboundHandler<Socks5CommandRequest?>() {
                                     .writeAndFlush(request)
                                     .addListener(ChannelFutureListener { future2: ChannelFuture? ->
                                         if (!future2!!.isSuccess) {
-                                            ctx.fireExceptionCaught(java.lang.Exception(future2.cause()))
+                                            ctx.fireExceptionCaught(Exception(future2.cause()))
                                             closeOnFlush(ch)
                                             closeOnFlush(ctx.channel())
                                         }
                                     })
                             } else {
-                                ctx.fireExceptionCaught(java.lang.Exception(future1.cause()))
+                                ctx.fireExceptionCaught(Exception(future1.cause()))
                                 closeOnFlush(ch)
                                 closeOnFlush(ctx.channel()) // Close the channel on failure
                             }

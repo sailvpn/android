@@ -1,7 +1,7 @@
-package com.illiad.troad.codec.socks5
+package com.illiad.troad.service.codec.socks5
 
-import com.illiad.troad.codec.HeaderEncoder.encodeHeader
-import com.illiad.troad.codec.socks5.V5AddressEncoder.encodeAddress
+import com.illiad.troad.service.codec.HeaderEncoder.encodeHeader
+import com.illiad.troad.service.codec.socks5.V5AddressEncoder.encodeAddress
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil
 import io.netty.channel.ChannelHandler
