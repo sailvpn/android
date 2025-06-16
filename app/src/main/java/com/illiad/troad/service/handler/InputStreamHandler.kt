@@ -53,7 +53,7 @@ class InputStreamHandler : ChannelInboundHandlerAdapter() {
                 // byteBuf.clear() // Prepare buffer for new write from channel
 
                 // writeBytes reads from fc into byteBuf. It's a blocking call.
-                val bytesRead = byteBuf.writeBytes(fc, 2048) // Read up to 2KB, adjust as needed
+                val bytesRead = byteBuf.writeBytes(fc, 4096) // Read up to 4KB, adjust as needed
 
                 if (bytesRead > 0) {
                     println("VPN Reader Thread: Read $bytesRead bytes from VPN interface.")
@@ -64,13 +64,14 @@ class InputStreamHandler : ChannelInboundHandlerAdapter() {
                 } else if (bytesRead == -1) {
                     println("VPN Reader Thread: End of stream reached on VPN interface.")
                     break // EOF
-                } // else { // bytesRead == 0
-                // This might happen if length to read was 0, or if channel is non-blocking
-                // and no data (though FileChannel usually blocks).
-                // Can add a small sleep here if 0 bytes are read continuously to avoid busy-wait,
-                // }
-                // sleep for a bit to avoid busy-waiting
-                Thread.sleep(10)
+                } else {
+                    bytesRead == 0
+                    // This might happen if length to read was 0, or if channel is non-blocking
+                    // and no data (though FileChannel usually blocks).
+                    // Can add a small sleep here if 0 bytes are read continuously to avoid busy-wait,
+                    // sleep for a bit to avoid busy-waiting
+                    Thread.sleep(10)
+                }
             }
         } catch (e: Exception) {
             ctx.fireExceptionCaught(e)
