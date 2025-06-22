@@ -54,6 +54,12 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core:1.7.0-beta01")
     implementation("androidx.compose.material:material-icons-extended:1.7.0-beta01")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1") // For ViewModel
+    // https://mvnrepository.com/artifact/io.netty/netty-all
+    implementation("io.netty:netty-all:4.1.118.Final")
+    // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-core
+    implementation("org.pcap4j:pcap4j-core:2.0.0-alpha.6")
+    // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-packetfactory-static
+    implementation("org.pcap4j:pcap4j-packetfactory-static:2.0.0-alpha.6")
 
     // ... other dependencies
     implementation(libs.androidx.core.ktx)

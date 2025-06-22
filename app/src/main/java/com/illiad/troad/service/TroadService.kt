@@ -4,21 +4,29 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.net.VpnService
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.illiad.troad.Consts
 import com.illiad.troad.MainActivity
+import com.illiad.troad.R
+import com.illiad.troad.service.Rss
+import com.illiad.troad.service.handler.VersionHandler
+import io.netty.bootstrap.ServerBootstrap
+import io.netty.channel.ChannelInitializer
+import io.netty.channel.ChannelPipeline
+import io.netty.channel.EventLoopGroup
+import io.netty.channel.nio.NioEventLoopGroup
+import io.netty.channel.socket.nio.NioServerSocketChannel
+import io.netty.channel.socket.nio.NioSocketChannel
+import io.netty.handler.logging.LogLevel
+import io.netty.handler.logging.LoggingHandler
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import kotlin.concurrent.thread // For background network operations
+import kotlin.concurrent.thread
 
 // Assume you have these resources:
 // R.string.app_name - Your app's name
@@ -28,8 +36,10 @@ import kotlin.concurrent.thread // For background network operations
 class TroadService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var vpnThread: Thread? = null // Thread for handling VPN packet I/O
-    private var isRunning = false
+    private lateinit var bootstrap: ServerBootstrap
+    private lateinit var bossGroup: EventLoopGroup
+    private lateinit var workerGroup: EventLoopGroup
+
 
     // To pass parameters from your UI to the service (optional)
     private var serverAddress: String? = null
@@ -46,7 +56,7 @@ class TroadService : VpnService() {
         Log.d(Consts.TAG, "onStartCommand received: ${intent?.action}")
         when (intent?.action) {
             Consts.ACTION_CONNECT -> {
-                if (isRunning) {
+                if (Utils.isRunning) {
                     Log.d(Consts.TAG, "VPN already running.")
                     // Optionally update notification or parameters if needed
                     return START_STICKY
@@ -60,11 +70,11 @@ class TroadService : VpnService() {
 
                 // Prepare and establish the VPN connection
                 if (prepareAndEstablishVpn()) {
-                    isRunning = true
+                    Utils.isRunning = true
                     startForeground(Consts.NOTIFICATION_ID, createNotification("VPN Connected"))
 
                     // Start a thread to handle packet forwarding
-                    vpnThread = thread { // Using kotlin.concurrent.thread for simplicity
+                    Utils.vpnThread = thread { // Using kotlin.concurrent.thread for simplicity
                         runVpnPacketLoop()
                     }
                     Log.d(Consts.TAG, "VPN connection established and foreground service started.")
@@ -81,19 +91,17 @@ class TroadService : VpnService() {
         }
         // If the service is killed, restart it with the last intent (if connect was successful)
         // Or START_NOT_STICKY if you don't want it to auto-restart.
-        return if (isRunning) START_STICKY else START_NOT_STICKY
+        return if (Utils.isRunning) START_STICKY else START_NOT_STICKY
     }
 
     private fun createNotificationChannel() { // Definition of your method
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                Consts.NOTIFICATION_CHANNEL_ID,
-                Consts.NOTIFICATION_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(serviceChannel) // Good to add null check for manager
-        }
+        val serviceChannel = NotificationChannel(
+            Consts.NOTIFICATION_CHANNEL_ID,
+            Consts.NOTIFICATION_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.createNotificationChannel(serviceChannel) // Good to add null check for manager
     }
 
     private fun createNotification(contentText: String): Notification {
@@ -123,14 +131,14 @@ class TroadService : VpnService() {
         )
 
         val notificationBuilder = NotificationCompat.Builder(this, Consts.NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_vpn_notification) // Replace with your VPN icon
+            .setSmallIcon(R.drawable.troy) // Replace with your VPN icon
             .setContentTitle(getString(R.string.app_name) + " VPN") // App name + " VPN"
             .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Or PRIORITY_LOW for less intrusive
             .setContentIntent(pendingOpenAppIntent) // Action on tap
             .setOngoing(true) // Makes the notification non-dismissable by swiping
             .addAction(
-                R.drawable.ic_disconnect_notification, // Replace with your disconnect icon (optional)
+                R.drawable.slash, // Replace with your disconnect icon (optional)
                 "Disconnect",
                 pendingDisconnectIntent
             )
@@ -147,13 +155,15 @@ class TroadService : VpnService() {
     private fun prepareAndEstablishVpn(): Boolean {
         // --- This is a crucial part where you configure the VPN ---
         val builder = Builder()
+        val tunIp = "10.8.0.2"
+        val dns1 = "8.8.8.8"
         try {
             // Configure IP address, routes, DNS servers, MTU, etc.
             // These are examples and MUST be configured according to your VPN server setup.
-            builder.setSession(getString(R.string.app_name)) // Display name for the VPN session
-                .addAddress("10.8.0.2", 24)      // VPN client's virtual IP
+            builder.setSession(Rss.getString(R.string.app_name)) // Display name for the VPN session
+                .addAddress(tunIp, 24)      // VPN client's virtual IP
                 .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
-                .addDnsServer("8.8.8.8")           // Example DNS
+                .addDnsServer(dns1)           // Example DNS
                 .setMtu(1400)                      // Set MTU (adjust as needed)
             //  .addAllowedApplication("com.example.anotherapp") // For per-app VPN (optional)
             //  .addDisallowedApplication(packageName)           // Exclude this app (optional)
@@ -179,7 +189,7 @@ class TroadService : VpnService() {
             Log.e(Consts.TAG, "Error establishing VPN interface", e)
             // Notify UI about the error if needed
             sendBroadcast(
-                Intent("com.example.myvpnapp.VPN_STATUS").putExtra(
+                Intent(Consts.ACTION_VPN_STATUS_BROADCAST).putExtra(
                     "status",
                     "ERROR: ${e.localizedMessage}"
                 )
@@ -197,137 +207,35 @@ class TroadService : VpnService() {
             return
         }
 
-        // These streams are for reading from and writing to the local TUN interface.
-        // Data written to vpnOutput goes to the Android OS network stack (as if coming from the network).
-        // Data read from vpnInput comes from the Android OS network stack (apps sending data out).
-        val vpnInput = FileInputStream(localVpnInterface.fileDescriptor)
-        val vpnOutput = FileOutputStream(localVpnInterface.fileDescriptor)
-
-        // Buffer for IP packets. Max IP packet size is typically 65535,
-        // but smaller buffers (e.g., 32767 or based on MTU) are common.
-        val buffer =
-            ByteArray(32767) // OrShort.MAX_VALUE.toInt() for full range, but MTU is usually smaller
-
-        // --- PLACEHOLDER: Establish and maintain connection to your remote VPN server ---
-        // Example:
-        // var remoteSocket: Socket? = null
-        // var remoteOutStream: OutputStream? = null
-        // var remoteInStream: InputStream? = null
-        // try {
-        //     remoteSocket = Socket(serverAddress, serverPort) // This is a blocking call!
-        //     remoteOutStream = remoteSocket.getOutputStream()
-        //     remoteInStream = remoteSocket.getInputStream()
-        //     Log.i(TAG, "Connected to remote VPN server: $serverAddress:$serverPort")
-        //
-        //     // You might need a separate thread to read from remoteInStream and write to vpnOutput
-        //     // to handle simultaneous bidirectional traffic.
-        //
-        // } catch (e: IOException) {
-        //     Log.e(TAG, "Failed to connect to remote VPN server: $serverAddress:$serverPort", e)
-        //     broadcastVpnStatus("Error: Could not connect to remote server.", false)
-        //     disconnectVpn()
-        //     return
-        // }
-        // --- END OF REMOTE CONNECTION PLACEHOLDER ---
-
-        Log.i(Consts.TAG, "VPN Packet Loop now running...")
+        this.bossGroup = NioEventLoopGroup(1)
+        this.workerGroup = NioEventLoopGroup(2)
 
         try {
-            while (isRunning && !Thread.currentThread().isInterrupted) {
-                // Read outgoing IP packet from the Android OS (tun0 interface)
-                val bytesRead = vpnInput.read(buffer)
-                if (bytesRead > 0) {
-                    val outgoingPacket = buffer.copyOfRange(0, bytesRead)
-                    Log.d(Consts.TAG, "OUTGOING: Read $bytesRead bytes from TUN.")
 
-                    // --- PLACEHOLDER: Encrypt/Encapsulate `outgoingPacket` ---
-                    // val encryptedPacket = encryptPacket(outgoingPacket, sharedSecret) // Your encryption logic
-                    // --- END OF PLACEHOLDER ---
+            // The key part: Create FileInputStream and FileOutputStream from the SAME FileDescriptor
+            val fd = localVpnInterface.fileDescriptor // This is java.io.FileDescriptor
+            Utils.vpnReadStream = FileInputStream(fd)   // For reading outgoing packets from the device
+            Utils.vpnWriteStream = FileOutputStream(fd) // For writing incoming packets to the device
+            this.bootstrap = ServerBootstrap()
+            this.bootstrap.group(bossGroup, workerGroup)
+                .channel(NioServerSocketChannel::class.java)
+                .handler(LoggingHandler(LogLevel.INFO))
+                .childHandler(object : ChannelInitializer<NioSocketChannel?>() {
+                    override fun initChannel(ch: NioSocketChannel?) {
+                        val pipeline: ChannelPipeline = ch!!.pipeline()
+                        pipeline.addLast(
+                            LoggingHandler(LogLevel.INFO),
+                            VersionHandler()
+                        )
+                    }
+                })
 
-                    // --- PLACEHOLDER: Send `encryptedPacket` to your remote VPN server ---
-                    // try {
-                    //    remoteOutStream?.write(encryptedPacket)
-                    //    remoteOutStream?.flush()
-                    //    Log.d(TAG, "OUTGOING: Sent ${encryptedPacket.size} encrypted bytes to server.")
-                    // } catch (e: IOException) {
-                    //    Log.e(TAG, "IOException writing to remote server", e)
-                    //    broadcastVpnStatus("Error: Connection to server lost (write).", false)
-                    //    break // Exit loop on connection error
-                    // }
-                    // --- END OF PLACEHOLDER ---
-
-                    // --- SIMPLIFIED ECHO (REMOVE FOR REAL VPN) ---
-                    // For testing the TUN interface locally without a real server,
-                    // you might echo the packet back. THIS IS NOT A VPN.
-                    Log.w(
-                        Consts.TAG,
-                        "ECHOING PACKET (REMOVE FOR REAL VPN): Writing $bytesRead bytes back to TUN."
-                    )
-                    vpnOutput.write(outgoingPacket, 0, bytesRead) // Echo back for testing
-                    // --- END OF ECHO ---
-                }
-
-                // --- PLACEHOLDER: Receive data from your remote VPN server ---
-                // This part is often handled in a separate thread or using non-blocking I/O
-                // to avoid blocking the reading from vpnInput.
-                // Example (simplified, would block if no data):
-                // if (remoteInStream != null && remoteInStream.available() > 0) {
-                //     val bytesFromServer = remoteInStream.read(buffer)
-                //     if (bytesFromServer > 0) {
-                //         val encryptedIncomingPacket = buffer.copyOfRange(0, bytesFromServer)
-                //         Log.d(TAG, "INCOMING: Received $bytesFromServer encrypted bytes from server.")
-                //
-                //         // --- PLACEHOLDER: Decrypt/Decapsulate `encryptedIncomingPacket` ---
-                //         // val incomingPacket = decryptPacket(encryptedIncomingPacket, sharedSecret) // Your decryption logic
-                //         // --- END OF PLACEHOLDER ---
-                //
-                //         // if (incomingPacket != null) {
-                //         //    vpnOutput.write(incomingPacket) // Write to TUN
-                //         //    Log.d(TAG, "INCOMING: Wrote ${incomingPacket.size} decrypted bytes to TUN.")
-                //         // }
-                //     } else if (bytesFromServer == -1) { // Server closed connection
-                //         Log.i(TAG, "Remote server closed connection.")
-                //         broadcastVpnStatus("Server disconnected.", false)
-                //         break // Exit loop
-                //     }
-                // }
-                // --- END OF PLACEHOLDER ---
-
-                // Prevent busy-waiting if no data is immediately available from either side.
-                // In a real implementation with blocking sockets, reads will block appropriately.
-                // If using non-blocking I/O, selectors (NIO) would be used.
-                // Thread.sleep(10) // Small delay; better to use blocking I/O or NIO selectors.
-            }
-        } catch (e: IOException) {
-            if (isRunning) { // Only log as error if we were supposed to be running
-                Log.e(Consts.TAG, "IOException in VPN packet loop", e)
-                broadcastVpnStatus("Network error in VPN.", false)
-            } else {
-                Log.i(Consts.TAG, "IOException in VPN packet loop (service stopping): ${e.message}")
-            }
+            bootstrap.bind(Rss.getInt(R.integer.localPort)).sync().channel().closeFuture().sync()
         } catch (e: InterruptedException) {
-            Log.i(Consts.TAG, "VPN packet loop interrupted.")
-            Thread.currentThread().interrupt() // Preserve interrupt status
-        } catch (e: Exception) {
-            if (isRunning) {
-                Log.e(Consts.TAG, "Unexpected error in VPN packet loop", e)
-                broadcastVpnStatus("Unexpected error in VPN.", false)
-            } else {
-                Log.i(Consts.TAG, "Unexpected error in VPN packet loop (service stopping): ${e.message}")
-            }
+            throw RuntimeException(e)
         } finally {
-            Log.i(Consts.TAG, "VPN Packet Loop exiting.")
-// --- PLACEHOLDER: Close remote connection ---
-// try {
-//     remoteInStream?.close()
-//     remoteOutStream?.close()
-//     remoteSocket?.close()
-//     Log.i(TAG, "Closed connection to remote VPN server.")
-// } catch (e: IOException) {
-//     Log.w(TAG, "IOException closing remote server connection", e)
-// }
-// --- END OF
-
+            bossGroup.shutdownGracefully()
+            workerGroup.shutdownGracefully()
         }
 
     }
@@ -340,20 +248,20 @@ class TroadService : VpnService() {
      */
     private fun stopVpnService(removeNotification: Boolean = true) {
         Log.i(Consts.TAG, "stopVpnService called. removeNotification: $removeNotification")
-        isRunning = false // Signal loops and other operations to stop
+        Utils.isRunning = false // Signal loops and other operations to stop
 
         // Interrupt the VPN packet handling thread if it's running
-        vpnThread?.interrupt()
+        Utils.vpnThread?.interrupt()
         try {
-            vpnThread?.join(1000) // Wait for the thread to die for a short period
-            if (vpnThread?.isAlive == true) {
+            Utils.vpnThread?.join(1000) // Wait for the thread to die for a short period
+            if (Utils.vpnThread?.isAlive == true) {
                 Log.w(Consts.TAG, "VPN packet thread did not terminate in time.")
             }
         } catch (e: InterruptedException) {
             Log.w(Consts.TAG, "Interrupted while waiting for VPN thread to join.")
             Thread.currentThread().interrupt() // Preserve interrupt status
         }
-        vpnThread = null
+        Utils.vpnThread = null
 
         closeVpnInterface() // Close the TUN interface
 
@@ -393,7 +301,7 @@ class TroadService : VpnService() {
      */
     private fun disconnectVpn() {
         Log.i(Consts.TAG, "disconnectVpn called.")
-        if (!isRunning) {
+        if (!Utils.isRunning) {
             Log.d(Consts.TAG, "VPN is not running, no need to disconnect further.")
             // Ensure service stops if it's lingering without being fully connected
             if (vpnInterface == null) stopSelf()
@@ -443,7 +351,7 @@ class TroadService : VpnService() {
         Log.i(Consts.TAG, "VPN Service Destroyed.")
         // Ensure all resources are cleaned up if not already done.
         // This is a final safeguard.
-        if (isRunning || vpnInterface != null || vpnThread?.isAlive == true) {
+        if (Utils.isRunning || vpnInterface != null || Utils.vpnThread?.isAlive == true) {
             Log.w(Consts.TAG, "onDestroy: Forcing cleanup as service might not have stopped cleanly.")
             stopVpnService(true)
         }

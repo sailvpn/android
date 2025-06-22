@@ -1,9 +1,9 @@
-package com.illiad.troad.handler
+package com.illiad.troad.service.handler
 
-import com.illiad.troad.HandlerNamer
-import com.illiad.troad.codec.socks5.V5InitReqDecoder
-import com.illiad.troad.codec.socks5.V5ServerEncoder
-import com.illiad.troad.handler.socks5.V5CommandHandler
+import com.illiad.troad.service.HandlerNamer
+import com.illiad.troad.service.codec.socks5.V5InitReqDecoder
+import com.illiad.troad.service.codec.socks5.V5ServerEncoder
+import com.illiad.troad.service.handler.socks5.V5CommandHandler
 import io.netty.buffer.ByteBuf
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.ByteToMessageDecoder
