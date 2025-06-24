@@ -1,4 +1,4 @@
-package com.illiad.troad.service.handler
+package com.illiad.troad.service.handler.socks5
 
 import com.illiad.troad.service.Utils
 import com.illiad.troad.service.handler.ip.Demux
