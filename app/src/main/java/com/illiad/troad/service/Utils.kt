@@ -1,19 +1,21 @@
 package com.illiad.troad.service
 
+import android.os.ParcelFileDescriptor
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFutureListener
-import java.io.FileInputStream
-import java.io.FileOutputStream
+import java.nio.channels.FileChannel
 
 object Utils {
 
     @Volatile
-    lateinit var vpnReadStream: FileInputStream
+    var vpnInterface: ParcelFileDescriptor? = null
+
     @Volatile
-    lateinit var vpnWriteStream: FileOutputStream
-    var vpnThread: Thread? = null // Thread for handling VPN packet I/O
-    var isRunning = false
+    lateinit var vpnReadFileChannel: FileChannel
+
+    @Volatile
+    lateinit var vpnWriteFileChannel: FileChannel
 
     /**
      * Closes the specified channel after all queued write requests are flushed.

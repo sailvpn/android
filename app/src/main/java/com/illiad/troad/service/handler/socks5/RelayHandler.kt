@@ -1,6 +1,6 @@
 package com.illiad.troad.service.handler.socks5
 
-import com.illiad.troad.service.Utils
+import com.illiad.troad.service.Utils.vpnWriteFileChannel
 import com.illiad.troad.service.handler.ip.Demux
 import io.netty.buffer.ByteBuf
 import io.netty.channel.ChannelHandlerContext
@@ -18,7 +18,7 @@ class RelayHandler() : SimpleChannelInboundHandler<ByteBuf>() {
             return
         }
 
-        if (!Utils.vpnWriteStream.channel.isOpen) {
+        if (!vpnWriteFileChannel.isOpen) {
             // VpnService is not running
             Demux.removeSession(ctx.channel())
             ctx.close() // Close the client connection as we can't process its data
@@ -31,10 +31,10 @@ class RelayHandler() : SimpleChannelInboundHandler<ByteBuf>() {
         }
 
         // relay bytes from bytebuffer to Tun-based output stream
-        byteBuf.readBytes(Utils.vpnWriteStream, readableBytes)
+        byteBuf.readBytes(vpnWriteFileChannel, byteBuf.readerIndex().toLong(), readableBytes)
 
         val session = Demux.getSession(ctx.channel())
-        // check if there are any remaining bytes in the session buffe
+        // check for remaining packet in the session buffer
         if (!session!!.isBufferEmpty()) {
             // forward one packet from the buffer to destination
             session.writeAndFlush(session.getPacket()!!)

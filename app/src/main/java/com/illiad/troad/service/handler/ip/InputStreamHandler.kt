@@ -1,19 +1,18 @@
 package com.illiad.troad.service.handler.ip
 
-import com.illiad.troad.service.Utils
+import com.illiad.troad.service.Utils.closeOnFlush
+import com.illiad.troad.service.Utils.vpnReadFileChannel
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
+import java.io.FileInputStream
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 
 @ChannelHandler.Sharable
 object InputStreamHandler : ChannelInboundHandlerAdapter() {
-
-    // Assuming Utils.vpnReadStream is a FileInputStream from VpnService's ParcelFileDescriptor
-    private val fileChannel: FileChannel = Utils.vpnReadStream.channel
 
     override fun channelActive(ctx: ChannelHandlerContext) {
         super.channelActive(ctx)
@@ -24,22 +23,22 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
             t
         }
         try {
-            if (!fileChannel.isOpen) {
+            if (!vpnReadFileChannel.isOpen) {
                 val errorMsg = "VPN FileChannel is not available or not open."
                 ctx.fireExceptionCaught(IOException(errorMsg))
-                Utils.closeOnFlush(ctx.channel())
+                closeOnFlush(ctx.channel())
                 return
             }
 
             // Start reading in a separate thread
             vpnReaderExecutor.submit {
-                readFromVpn(ctx, fileChannel)
+                readFromVpn(ctx, vpnReadFileChannel)
             }
 
         } catch (e: Exception) {
             System.err.println("Error setting up VPN FileChannel: ${e.message}")
             ctx.fireExceptionCaught(e)
-            Utils.closeOnFlush(ctx.channel())
+            closeOnFlush(ctx.channel())
         }
     }
 
@@ -49,11 +48,11 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
         var keepReading = true
 
         try {
-            while (keepReading && fc.isOpen && !Thread.currentThread().isInterrupted) {
+            while (keepReading && vpnReadFileChannel.isOpen && !Thread.currentThread().isInterrupted) {
 
                 // writeBytes reads from fc into byteBuf. It's a blocking call.
                 val bytesRead =
-                    byteBuf.writeBytes(fc, 65535) // 65535 is the maximum size of ipv4 packets
+                    byteBuf.writeBytes(fc, 65575) // ipv6 maximum length 65575, ipv4 65535,
 
                 if (bytesRead == 0) {
                     // no data, sleep for a bit to avoid busy-waiting
@@ -72,9 +71,9 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
             }
         } catch (e: Exception) {
             ctx.fireExceptionCaught(e)
-            Utils.closeOnFlush(ctx.channel())
+            closeOnFlush(ctx.channel())
         } finally {
-            Utils.closeOnFlush(ctx.channel())
+            closeOnFlush(ctx.channel())
         }
     }
 
@@ -88,7 +87,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
             }
             // Start reading in a separate thread
             vpnReaderExecutor.submit {
-                readFromVpn(ctx!!, fileChannel)
+                readFromVpn(ctx!!, vpnReadFileChannel)
             }
 
         }
@@ -96,7 +95,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, throwable: Throwable?) {
         ctx.fireExceptionCaught(throwable)
-        Utils.closeOnFlush(ctx.channel())
+        closeOnFlush(ctx.channel())
     }
 
 }
