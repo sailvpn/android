@@ -1,10 +1,9 @@
-package com.illiad.troad.service.handler
+package com.illiad.troad.service.handler.ip
 
-import io.netty.channel.ChannelHandlerContext
 import com.illiad.troad.service.Utils
-import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
+import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -28,7 +27,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
             if (!fileChannel.isOpen) {
                 val errorMsg = "VPN FileChannel is not available or not open."
                 ctx.fireExceptionCaught(IOException(errorMsg))
-                closeOnFlush(ctx.channel())
+                Utils.closeOnFlush(ctx.channel())
                 return
             }
 
@@ -40,7 +39,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
         } catch (e: Exception) {
             System.err.println("Error setting up VPN FileChannel: ${e.message}")
             ctx.fireExceptionCaught(e)
-            closeOnFlush(ctx.channel())
+            Utils.closeOnFlush(ctx.channel())
         }
     }
 
@@ -73,9 +72,9 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
             }
         } catch (e: Exception) {
             ctx.fireExceptionCaught(e)
-            closeOnFlush(ctx.channel())
+            Utils.closeOnFlush(ctx.channel())
         } finally {
-            closeOnFlush(ctx.channel())
+            Utils.closeOnFlush(ctx.channel())
         }
     }
 
@@ -97,7 +96,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, throwable: Throwable?) {
         ctx.fireExceptionCaught(throwable)
-        closeOnFlush(ctx.channel())
+        Utils.closeOnFlush(ctx.channel())
     }
 
 }

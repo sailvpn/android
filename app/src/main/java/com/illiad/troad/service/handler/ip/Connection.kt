@@ -1,6 +1,8 @@
 package com.illiad.troad.service.handler.ip
 
 import org.pcap4j.packet.IpPacket
+import org.pcap4j.packet.IpV4Packet
+import org.pcap4j.packet.IpV6Packet
 import org.pcap4j.packet.TcpPacket
 import org.pcap4j.packet.UdpPacket
 import org.pcap4j.packet.Packet // For the most generic packet object
@@ -11,65 +13,92 @@ data class Connection(
     val destinationAddress: InetAddress,
     val sourcePort: Int?, // Nullable if not TCP or UDP
     val destinationPort: Int?, // Nullable if not TCP or UDP
-    val protocol: String // e.g., "TCP", "UDP", "ICMP", or IP protocol number as string
+    val protocol: String, // e.g., "TCP", "UDP", "ICMP", or IP protocol number as string
+    val ipVersion: Int // 4 or 6
 ) {
 
     // equal() and hashCode() are automatically generated for data classes
 
-    fun extractConnetion(packet: Packet?): Connection? { // Renamed from extractConnectionInfo to match file
-        if (packet == null) {
-            return null
-        }
+    companion object {
+        fun extractConnetion(packet: Packet?): Connection? { // Renamed from extractConnectionInfo to match file
+            if (packet == null) {
+                return null
+            }
 
-        val ipPacket: IpPacket? = when {
-            packet is IpPacket -> packet
-            packet.contains(IpPacket::class.java) -> packet.get(IpPacket::class.java)
-            else -> null
-        }
+            val ipPacket: IpPacket? = when {
+                packet is IpPacket -> packet
+                packet.contains(IpPacket::class.java) -> packet.get(IpPacket::class.java)
+                else -> null
+            }
 
-        if (ipPacket == null) {
-            println("Packet does not contain an IP layer.")
-            return null
-        }
+            if (ipPacket == null) {
+                println("Packet does not contain an IP layer.")
+                return null
+            }
 
-        val sourceAddress: InetAddress = ipPacket.header.srcAddr
-        val destinationAddress: InetAddress = ipPacket.header.dstAddr
-        var sourcePort: Int? = null
-        var destinationPort: Int? = null
-        // Get protocol name (e.g., TCP, UDP) or number if name is not standard
-        var protocolName: String =
-            ipPacket.header.protocol.name() ?: ipPacket.header.protocol.value().toString()
+            // Determine IP Version
+            val determinedIpVersion: Int = when (ipPacket) {
+                is IpV4Packet -> 4
+                is IpV6Packet -> 6
+                else -> {
+                    // Fallback by checking the version field in the generic IpPacket header
+                    // Note: ipPacket.header.version is an IpVersion object.
+                    // IpVersion.INET4 has value() == 4, IpVersion.INET6 has value() == 6
+                    val versionFromHeader = ipPacket.header.version.value().toInt()
+                    if (versionFromHeader == 4 || versionFromHeader == 6) {
+                        versionFromHeader
+                    } else {
+                        println("Unknown IP version in packet header: ${ipPacket.header.version}")
+                        0 // Or handle as an error, perhaps return null or throw exception
+                    }
+                }
+            }
+            // If determinedIpVersion is 0 here, you might want to return null or throw
+            if (determinedIpVersion == 0) {
+                println("Could not reliably determine IP version for packet.")
+                return null
+            }
+
+            val sourceAddress: InetAddress = ipPacket.header.srcAddr
+            val destinationAddress: InetAddress = ipPacket.header.dstAddr
+            var sourcePort: Int? = null
+            var destinationPort: Int? = null
+            // Get protocol name (e.g., TCP, UDP) or number if name is not standard
+            var protocolName: String =
+                ipPacket.header.protocol.name() ?: ipPacket.header.protocol.value().toString()
 
 
-        // Check for TCP Packet
-        if (ipPacket.payload is TcpPacket) {
-            val tcpPacket = ipPacket.payload as TcpPacket
-            sourcePort = tcpPacket.header.srcPort.valueAsInt()
-            destinationPort = tcpPacket.header.dstPort.valueAsInt()
-            // protocolName will be "TCP" from ipPacket.header.protocol.name()
-        }
-        // Check for UDP Packet
-        else if (ipPacket.payload is UdpPacket) {
-            val udpPacket = ipPacket.payload as UdpPacket
-            sourcePort = udpPacket.header.srcPort.valueAsInt()
-            destinationPort = udpPacket.header.dstPort.valueAsInt()
-            // protocolName will be "UDP"
-        }
-        // You can add more else if blocks for other protocols if needed,
-        // though they might not have "ports" in the same sense (e.g., ICMP has type/code).
-        else {
-            // For protocols like ICMP, sourcePort and destinationPort will remain null.
-            // protocolName is already set from the IP header.
-            println("IP packet payload is not TCP or UDP. Protocol: ${ipPacket.header.protocol} (Name: $protocolName)")
-        }
+            // Check for TCP Packet
+            if (ipPacket.payload is TcpPacket) {
+                val tcpPacket = ipPacket.payload as TcpPacket
+                sourcePort = tcpPacket.header.srcPort.valueAsInt()
+                destinationPort = tcpPacket.header.dstPort.valueAsInt()
+                // protocolName will be "TCP" from ipPacket.header.protocol.name()
+            }
+            // Check for UDP Packet
+            else if (ipPacket.payload is UdpPacket) {
+                val udpPacket = ipPacket.payload as UdpPacket
+                sourcePort = udpPacket.header.srcPort.valueAsInt()
+                destinationPort = udpPacket.header.dstPort.valueAsInt()
+                // protocolName will be "UDP"
+            }
+            // You can add more else if blocks for other protocols if needed,
+            // though they might not have "ports" in the same sense (e.g., ICMP has type/code).
+            else {
+                // For protocols like ICMP, sourcePort and destinationPort will remain null.
+                // protocolName is already set from the IP header.
+                println("IP packet payload is not TCP or UDP. Protocol: ${ipPacket.header.protocol} (Name: $protocolName)")
+            }
 
-        return Connection(
-            sourceAddress = sourceAddress,
-            destinationAddress = destinationAddress,
-            sourcePort = sourcePort,
-            destinationPort = destinationPort,
-            protocol = protocolName
-        )
+            return Connection(
+                sourceAddress = sourceAddress,
+                destinationAddress = destinationAddress,
+                sourcePort = sourcePort,
+                destinationPort = destinationPort,
+                protocol = protocolName,
+                ipVersion = determinedIpVersion
+            )
+        }
     }
 
 // fun main() {

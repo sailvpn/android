@@ -8,7 +8,9 @@ import java.io.FileOutputStream
 
 object Utils {
 
+    @Volatile
     lateinit var vpnReadStream: FileInputStream
+    @Volatile
     lateinit var vpnWriteStream: FileOutputStream
     var vpnThread: Thread? = null // Thread for handling VPN packet I/O
     var isRunning = false
