@@ -6,13 +6,12 @@ import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
-import java.io.FileInputStream
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 
 @ChannelHandler.Sharable
-object InputStreamHandler : ChannelInboundHandlerAdapter() {
+object InputHandler : ChannelInboundHandlerAdapter() {
 
     override fun channelActive(ctx: ChannelHandlerContext) {
         super.channelActive(ctx)
