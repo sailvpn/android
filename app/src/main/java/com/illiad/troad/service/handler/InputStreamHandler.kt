@@ -16,7 +16,6 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
     // Assuming Utils.vpnReadStream is a FileInputStream from VpnService's ParcelFileDescriptor
     private val fileChannel: FileChannel = Utils.vpnReadStream.channel
 
-
     override fun channelActive(ctx: ChannelHandlerContext) {
         super.channelActive(ctx)
         println("InputStreamHandler: Channel is active. Starting VPN reader thread.")
@@ -35,7 +34,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
 
             // Start reading in a separate thread
             vpnReaderExecutor.submit {
-                readFromVpnAndFireChannelRead(ctx, fileChannel)
+                readFromVpn(ctx, fileChannel)
             }
 
         } catch (e: Exception) {
@@ -45,13 +44,8 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
         }
     }
 
-    private fun readFromVpnAndFireChannelRead(ctx: ChannelHandlerContext, fc: FileChannel) {
+    private fun readFromVpn(ctx: ChannelHandlerContext, fc: FileChannel) {
 
-        val vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
-            val t = Thread(r, "vpn-reader-thread")
-            t.isDaemon = true // So it doesn't prevent JVM shutdown
-            t
-        }
         val byteBuf = ctx.alloc().buffer() // Allocate buffer once
         var keepReading = true
 
@@ -95,7 +89,7 @@ object InputStreamHandler : ChannelInboundHandlerAdapter() {
             }
             // Start reading in a separate thread
             vpnReaderExecutor.submit {
-                readFromVpnAndFireChannelRead(ctx!!, fileChannel)
+                readFromVpn(ctx!!, fileChannel)
             }
 
         }
