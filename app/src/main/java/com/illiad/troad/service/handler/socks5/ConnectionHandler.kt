@@ -46,8 +46,7 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
             connection.destinationAddress.toString(),
             connection.destinationPort!!
         )
-        b.group(ctx.channel().eventLoop())
-            .channel(NioSocketChannel::class.java)
+        b.group(ctx.channel().eventLoop()).channel(NioSocketChannel::class.java)
             .option<Int?>(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
             .option<Boolean?>(ChannelOption.SO_KEEPALIVE, true)
             .handler(object : ChannelInitializer<SocketChannel?>() {
@@ -69,14 +68,11 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                         .addListener(GenericFutureListener { future1: Future<in Channel?>? ->
                             if (future1!!.isSuccess) {
                                 // backend outbound encoder: standard socks5 command request (Connect or UdP)
-                                pipeline.addLast(
-                                    HandlerNamer.name,
-                                    V5ClientEncoder
-                                ) // backend inbound decoder: socks5 client decoder
+                                pipeline.addLast(HandlerNamer.name, V5ClientEncoder)
+                                    // backend inbound decoder: socks5 client decoder
                                     .addLast(HandlerNamer.name, V5ClientDecoder())
-                                    .addLast(HandlerNamer.name, V5AckHandler(ctx))
-                                    .channel()
-                                    .writeAndFlush(request)
+                                    .addLast(HandlerNamer.name, AckHandler(ctx, connection))
+                                    .channel().writeAndFlush(request)
                                     .addListener(ChannelFutureListener { future2: ChannelFuture? ->
                                         if (!future2!!.isSuccess) {
                                             ctx.fireExceptionCaught(Exception(future2.cause()))
