@@ -19,7 +19,7 @@ import io.netty.handler.ssl.SslHandler
 import io.netty.util.concurrent.GenericFutureListener
 import io.netty.util.concurrent.Future
 
-class ConnectHandler() : SimpleChannelInboundHandler<Connection>() {
+class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
     private val b = Bootstrap()
 
     public override fun channelRead0(ctx: ChannelHandlerContext, connection: Connection) {

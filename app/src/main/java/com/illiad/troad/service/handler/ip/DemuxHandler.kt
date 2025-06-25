@@ -1,14 +1,14 @@
 package com.illiad.troad.service.handler.ip
 
 import com.illiad.troad.service.HandlerNamer
-import com.illiad.troad.service.handler.socks5.ConnectHandler
+import com.illiad.troad.service.handler.socks5.ConnectionHandler
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import org.pcap4j.packet.IpPacket
 
 @ChannelHandler.Sharable
-object DmuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
+object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
     override fun channelRead0(ctx: ChannelHandlerContext?, packets: MutableList<IpPacket?>?) {
         if (packets == null || packets.isEmpty()) {
@@ -25,7 +25,7 @@ object DmuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
                     // new session
                     session = Demux.createSession(connection)
                     session.addPacket(packet)
-                    ctx?.pipeline()?.addLast(HandlerNamer.name, ConnectHandler())
+                    ctx?.pipeline()?.addLast(HandlerNamer.name, ConnectionHandler())
                     ctx?.fireChannelRead(connection)
                 } else if (!session.isBufferEmpty()) {
                     // existing session with buffered packet

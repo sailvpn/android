@@ -14,7 +14,7 @@ import org.pcap4j.packet.factory.PacketFactories
 import org.pcap4j.packet.namednumber.DataLinkType
 
 @Sharable
-object PacketDercoder : ByteToMessageDecoder() {
+object PacketDecoder : ByteToMessageDecoder() {
 
     private const val MIN_IPV4_HEADER_SIZE = 20
     private const val IPV6_HEADER_SIZE = 40 // Fixed size for IPv6 header

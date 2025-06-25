@@ -2,7 +2,7 @@ package com.illiad.troad.service.handler.socks5
 
 import com.illiad.troad.service.HandlerNamer
 import com.illiad.troad.service.Utils.closeOnFlush
-import com.illiad.troad.service.handler.RelayHandler
+import com.illiad.troad.service.handler.socks5.RelayHandler
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.handler.codec.socksx.v5.Socks5CommandResponse
