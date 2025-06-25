@@ -2,6 +2,8 @@ package com.illiad.troad.service.handler.ip
 
 import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.service.Utils.vpnReadFileChannel
+import com.illiad.troad.service.Utils.isRunning
+import com.illiad.troad.service.Utils.vpnReaderExecutor
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
@@ -16,7 +18,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
     override fun channelActive(ctx: ChannelHandlerContext) {
         super.channelActive(ctx)
         println("InputStreamHandler: Channel is active. Starting VPN reader thread.")
-        val vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
+        vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
             val t = Thread(r, "vpn-reader-thread")
             t.isDaemon = true // So it doesn't prevent JVM shutdown
             t
@@ -33,9 +35,11 @@ object InputHandler : ChannelInboundHandlerAdapter() {
             vpnReaderExecutor.submit {
                 readFromVpn(ctx, vpnReadFileChannel)
             }
+            isRunning = true
 
         } catch (e: Exception) {
             System.err.println("Error setting up VPN FileChannel: ${e.message}")
+            isRunning = false
             ctx.fireExceptionCaught(e)
             closeOnFlush(ctx.channel())
         }
@@ -69,6 +73,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
                 }
             }
         } catch (e: Exception) {
+            isRunning = false
             ctx.fireExceptionCaught(e)
             closeOnFlush(ctx.channel())
         } finally {
@@ -79,7 +84,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
     override fun userEventTriggered(ctx: ChannelHandlerContext?, evt: Any?) {
         super.userEventTriggered(ctx, evt)
         if (evt is MoreBytes) {
-            val vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
+            vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
                 val t = Thread(r, "vpn-reader-thread")
                 t.isDaemon = true // So it doesn't prevent JVM shutdown
                 t
