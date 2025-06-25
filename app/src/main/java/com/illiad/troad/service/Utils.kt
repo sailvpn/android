@@ -5,6 +5,7 @@ import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFutureListener
 import java.nio.channels.FileChannel
+import java.util.concurrent.ExecutorService
 
 object Utils {
 
@@ -16,6 +17,12 @@ object Utils {
 
     @Volatile
     lateinit var vpnWriteFileChannel: FileChannel
+
+    @Volatile
+    var isRunning: Boolean = false
+
+    @Volatile
+    lateinit var vpnReaderExecutor: ExecutorService
 
     /**
      * Closes the specified channel after all queued write requests are flushed.
