@@ -6,9 +6,13 @@ import io.netty.channel.Channel
 import io.netty.channel.ChannelFutureListener
 import java.nio.channels.FileChannel
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.Condition
+import java.util.concurrent.locks.ReentrantLock
 
 object Utils {
 
+    // varibles for InputHandler
     @Volatile
     var vpnInterface: ParcelFileDescriptor? = null
 
@@ -22,7 +26,14 @@ object Utils {
     var isRunning: Boolean = false
 
     @Volatile
-    lateinit var vpnReaderExecutor: ExecutorService
+    var vpnReaderExecutor: ExecutorService? = null
+    val isReaderTaskSubmitted = AtomicBoolean(false)
+    // Lock and Condition for signaling the reader thread
+    val readerLock = ReentrantLock()
+    val readCondition: Condition = readerLock.newCondition()
+    @Volatile
+    var workAvailable = false // Guard for spurious wakeups and initial start
+
 
     /**
      * Closes the specified channel after all queued write requests are flushed.

@@ -1,9 +1,13 @@
 package com.illiad.troad.service.handler.ip
 
 import com.illiad.troad.service.Utils.closeOnFlush
-import com.illiad.troad.service.Utils.vpnReadFileChannel
 import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.Utils.vpnReaderExecutor
+import com.illiad.troad.service.Utils.vpnReadFileChannel
+import com.illiad.troad.service.Utils.isReaderTaskSubmitted
+import com.illiad.troad.service.Utils.readCondition
+import com.illiad.troad.service.Utils.readerLock
+import com.illiad.troad.service.Utils.workAvailable
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
@@ -11,17 +15,34 @@ import io.netty.channel.ChannelInboundHandlerAdapter
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.withLock
 
 @ChannelHandler.Sharable
 object InputHandler : ChannelInboundHandlerAdapter() {
 
     // Constants for proactive reading behavior
-    // Max expected packet size, 65575 is the maximum lengh for ipv6, ipv4 is 65535
+    // Max expected packet size, 65575 is the maximum length for ipv6, ipv4 is 65535
     private const val MAX_IP_PACKET_SIZE = 65575
+
     // How many times to retry immediately if 0 bytes are read
     private const val MAX_CONSECUTIVE_ZERO_READ_ATTEMPTS = 5
+
     // How long to pause if still no data after several attempts
     private const val SHORT_NAP_DURATION_MS = 10L
+
+    override fun handlerAdded(ctx: ChannelHandlerContext) {
+        super.handlerAdded(ctx)
+        println("InputHandler: Handler added. Initializing VPN Reader Executor.")
+        if (vpnReaderExecutor == null || vpnReaderExecutor!!.isShutdown) {
+            vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
+                val t = Thread(r, "vpn-reader-thread-lock")
+                t.isDaemon = true
+                t
+            }
+        }
+        ensureReaderTaskIsRunning(ctx)
+    }
 
     override fun channelActive(ctx: ChannelHandlerContext) {
         super.channelActive(ctx)
@@ -30,6 +51,66 @@ object InputHandler : ChannelInboundHandlerAdapter() {
         // This is good for control.
         setupAndSubmit(ctx)
     }
+
+    private fun ensureReaderTaskIsRunning(ctx: ChannelHandlerContext) {
+        if (isReaderTaskSubmitted.compareAndSet(false, true)) {
+            vpnReaderExecutor!!.submit {
+                persistentReaderLoopWithLock(ctx)
+            }
+        }
+    }
+
+    private fun persistentReaderLoopWithLock(ctx: ChannelHandlerContext) {
+        println("VPN Reader Thread (Lock): Persistent loop started. Waiting for signals...")
+        try {
+            while (isRunning && !Thread.currentThread().isInterrupted) {
+                readerLock.withLock { // Acquires the lock
+                    // Wait while no work is available and still running
+                    while (!workAvailable && isRunning && !Thread.currentThread().isInterrupted) {
+                        println("VPN Reader Thread (Lock): Awaiting signal...")
+                        try {
+                            readCondition.await() // Releases lock, waits, reacquires lock on wakeup
+                        } catch (ie: InterruptedException) {
+                            Thread.currentThread().interrupt() // Restore interrupt status
+                            println("VPN Reader Thread (Lock): Await interrupted.")
+                            // Break from inner while, outer loop will check interrupt status
+                            return@persistentReaderLoopWithLock // Exit method
+                        }
+                    }
+                    // If we are here, either workAvailable is true, or !isRunning, or interrupted.
+                    if (!isRunning || Thread.currentThread().isInterrupted) {
+                        return@persistentReaderLoopWithLock // Exit method
+                    }
+                    // Reset workAvailable flag after waking up to process one unit of work
+                    workAvailable = false
+                } // Lock is released here
+
+                // We've been signaled and conditions are met
+                println("VPN Reader Thread (Lock): Awakened. Starting proactive read.")
+                if (ctx.channel().isActive && vpnReadFileChannel.isOpen) {
+                    try {
+                        readFromVpnProactively(ctx, vpnReadFileChannel)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        println("VPN Reader Thread (Lock): Proactive read was interrupted.")
+                        // Loop will check interrupt status and exit
+                    } catch (ioe: IOException) {
+                        System.err.println("VPN Reader Thread (Lock): IOException during proactive read: ${ioe.message}")
+                        handleReadExceptionOnEventLoop(ctx, ioe)
+                    } catch (e: Exception) {
+                        System.err.println("VPN Reader Thread (Lock): Unexpected error during proactive read: ${e.message}")
+                        handleReadExceptionOnEventLoop(ctx, e)
+                    }
+                } else {
+                    println("VPN Reader Thread (Lock): Awakened, but channel not active or file not open.")
+                }
+            }
+        } finally {
+            println("VPN Reader Thread (Lock): Persistent loop finished.")
+            isReaderTaskSubmitted.set(false)
+        }
+    }
+
 
     private fun setupAndSubmit(ctx: ChannelHandlerContext) {
         // Potentially re-creating executor on every MoreBytes might be slightly heavy.
@@ -43,7 +124,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
         }
         isRunning = true // Should ideally be managed more tightly with the actual read loop status
 
-        vpnReaderExecutor.submit {
+        vpnReaderExecutor!!.submit {
             try {
                 readFromVpnProactively(ctx, vpnReadFileChannel)
             } catch (e: Exception) {
@@ -208,38 +289,86 @@ object InputHandler : ChannelInboundHandlerAdapter() {
     }
 
     override fun userEventTriggered(ctx: ChannelHandlerContext, evt: Any?) {
-        super.userEventTriggered(ctx, evt) // Good practice to call super
+        super.userEventTriggered(ctx, evt)
         if (evt is MoreBytes) {
-            println("InputHandler: MoreBytes event received. Triggering next read.")
-            if (isRunning && vpnReadFileChannel.isOpen) { // Only submit if still valid to run
-                setupAndSubmit(ctx)
-            } else {
-                println("InputHandler: MoreBytes received, but not in a state to read (isRunning=$isRunning, isOpen=${vpnReadFileChannel.isOpen}).")
-            }
+            println("InputHandler: MoreBytes event received.")
+            triggerReadWithLock()
         }
     }
 
-    override fun channelInactive(ctx: ChannelHandlerContext) { // Added for cleanup
+    private fun triggerReadWithLock() {
+        if (!isRunning) {
+            println("InputHandler: Not triggering read, isRunning is false.")
+            return
+        }
+        readerLock.withLock {
+            println("InputHandler: Signaling reader thread (Lock).")
+            workAvailable = true
+            readCondition.signal() // Wakes up one waiting thread (our reader thread)
+        }
+    }
+
+    private fun handleReadExceptionOnEventLoop(ctx: ChannelHandlerContext, e: Throwable) {
+        // Ensure ctx operations are on the event loop
+        if (ctx.channel().eventLoop().inEventLoop()) {
+            handleReadException(ctx, e) // Your existing handler
+        } else {
+            ctx.channel().eventLoop().execute { handleReadException(ctx, e) }
+        }
+    }
+
+    override fun channelInactive(ctx: ChannelHandlerContext) {
         super.channelInactive(ctx)
-        println("InputHandler: Channel is inactive. Shutting down VPN reader executor.")
-        isRunning = false
-        vpnReaderExecutor.shutdown()
-        // You might want to await termination for a short period if necessary
-        // try {
-        //    if (!vpnReaderExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-        //        vpnReaderExecutor.shutdownNow()
-        //    }
-        // } catch (ie: InterruptedException) {
-        //    vpnReaderExecutor.shutdownNow()
-        //    Thread.currentThread().interrupt()
-        // }
-        // Close vpnReadFileChannel if this handler is responsible for its lifecycle
-        // try { vpnReadFileChannel.close() } catch (e: IOException) { /* log */ }
+        println("InputHandler: Channel is inactive. Preparing to shutdown VPN reader.")
+        shutdownReaderExecutor() // Call common shutdown logic
+    }
+
+    override fun handlerRemoved(ctx: ChannelHandlerContext) { // Good place for final cleanup
+        super.handlerRemoved(ctx)
+        println("InputHandler: Handler removed. Shutting down VPN reader.")
+        shutdownReaderExecutor()
+    }
+
+    private fun shutdownReaderExecutor() {
+        isRunning = false // Signal all loops to stop
+
+        // Wake up the reader thread if it's waiting so it can terminate gracefully
+        readerLock.withLock {
+            workAvailable = false // Prevent further work even if signaled for shutdown
+            readCondition.signalAll() // In case multiple threads (though we have one) or complex conditions
+        }
+
+        vpnReaderExecutor.let { executor ->
+            if (executor!!.isShutdown) {
+                println("InputHandler: Shutting down VPN Reader ExecutorService.")
+                executor.shutdown() // Disable new tasks from being submitted
+                try {
+                    // Wait a while for existing tasks to terminate
+                    if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                        println("InputHandler: VPN Reader ExecutorService did not terminate in time, forcing shutdown.")
+                        executor.shutdownNow() // Cancel currently executing tasks
+                        // Wait a while for tasks to respond to being cancelled
+                        if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                            System.err.println("InputHandler: VPN Reader ExecutorService did not terminate after shutdownNow.")
+                        }
+                    }
+                } catch (ie: InterruptedException) {
+                    println("InputHandler: Interrupted while waiting for executor shutdown.")
+                    executor.shutdownNow() // Re-cancel if current thread was interrupted
+                    Thread.currentThread().interrupt() // Preserve interrupt status
+                }
+            }
+        }
+        vpnReaderExecutor = null // Allow GC
+        isReaderTaskSubmitted.set(false) // Reset for potential re-addition
+        println("InputHandler: VPN Reader Executor shutdown complete.")
     }
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, throwable: Throwable?) {
         ctx.fireExceptionCaught(throwable)
         closeOnFlush(ctx.channel())
     }
+
+
 
 }
