@@ -12,11 +12,11 @@ data class Session(
 
     val buffer: MutableList<IpPacket> = mutableListOf()
 
-    fun setChannel(channel: Channel?) {
+    fun setSessionChannel(channel: Channel?) {
         this.channel = channel
     }
 
-    fun setConnection(connection: Connection?) {
+    fun setSessionConnection(connection: Connection?) {
         this.connection = connection
     }
 
