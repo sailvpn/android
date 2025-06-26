@@ -1,5 +1,6 @@
 package com.illiad.troad.view
 
+import android.annotation.SuppressLint
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
@@ -135,6 +136,7 @@ fun ProxySettingsScreenPreview() {
     }
 }
 
+@SuppressLint("ViewModelConstructorInComposable")
 @Preview(showBackground = true)
 @Composable
 fun ProxySettingsScreenRunningPreview() {
