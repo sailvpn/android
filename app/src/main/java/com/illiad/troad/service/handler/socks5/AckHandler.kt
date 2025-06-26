@@ -2,6 +2,7 @@ package com.illiad.troad.service.handler.socks5
 
 import com.illiad.troad.service.HandlerNamer
 import com.illiad.troad.service.Utils.closeOnFlush
+import com.illiad.troad.service.codec.ip.PacketEncoder
 import com.illiad.troad.service.handler.ip.Connection
 import com.illiad.troad.service.handler.ip.Demux
 import io.netty.channel.ChannelHandlerContext
@@ -26,8 +27,8 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
             val frontendPipeline = frontend.pipeline()
             val backend = ctx.channel()!!
             val backendPipeline = backend.pipeline()
-            // setup Socks direct channel relay for backend
-            backendPipeline.addLast(RelayHandler())
+            // setup ip handlers for backend
+            backendPipeline.addLast(PacketEncoder).addLast(RelayHandler())
             val prefix: String = HandlerNamer.prefix
             // remove all handlers except SslHandler from backendPipeline
             for (name in backendPipeline.names()) {
@@ -45,7 +46,7 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
             // associate backend channel with connection, now that it is established
             val session = Demux.getSession(connection);
             if (session != null) {
-                session.setChannel(backend)
+                session.setSessionChannel(backend)
                 // forward the first packet to the backend, to
                 if(!session.isBufferEmpty()){
                     session.writeAndFlush(session.getPacket()!!)
