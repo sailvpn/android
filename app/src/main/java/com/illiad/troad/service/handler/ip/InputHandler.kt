@@ -70,7 +70,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
                         println("VPN Reader Thread (Lock): Awaiting signal...")
                         try {
                             readCondition.await() // Releases lock, waits, reacquires lock on wakeup
-                        } catch (ie: InterruptedException) {
+                        } catch (_: InterruptedException) {
                             Thread.currentThread().interrupt() // Restore interrupt status
                             println("VPN Reader Thread (Lock): Await interrupted.")
                             // Break from inner while, outer loop will check interrupt status
@@ -90,7 +90,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
                 if (ctx.channel().isActive && vpnReadFileChannel.isOpen) {
                     try {
                         readFromVpnProactively(ctx, vpnReadFileChannel)
-                    } catch (e: InterruptedException) {
+                    } catch (_: InterruptedException) {
                         Thread.currentThread().interrupt()
                         println("VPN Reader Thread (Lock): Proactive read was interrupted.")
                         // Loop will check interrupt status and exit
@@ -352,7 +352,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
                             System.err.println("InputHandler: VPN Reader ExecutorService did not terminate after shutdownNow.")
                         }
                     }
-                } catch (ie: InterruptedException) {
+                } catch (_: InterruptedException) {
                     println("InputHandler: Interrupted while waiting for executor shutdown.")
                     executor.shutdownNow() // Re-cancel if current thread was interrupted
                     Thread.currentThread().interrupt() // Preserve interrupt status
@@ -368,7 +368,5 @@ object InputHandler : ChannelInboundHandlerAdapter() {
         ctx.fireExceptionCaught(throwable)
         closeOnFlush(ctx.channel())
     }
-
-
 
 }
