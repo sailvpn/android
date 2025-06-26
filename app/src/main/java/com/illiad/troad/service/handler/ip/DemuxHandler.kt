@@ -11,7 +11,7 @@ import org.pcap4j.packet.IpPacket
 object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
     override fun channelRead0(ctx: ChannelHandlerContext?, packets: MutableList<IpPacket?>?) {
-        if (packets == null || packets.isEmpty()) {
+        if (ctx == null || packets == null || packets.isEmpty()) {
             return
         }
         for (packet in packets) {
@@ -25,8 +25,8 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
                     // new session
                     session = Demux.createSession(connection)
                     session.addPacket(packet)
-                    ctx?.pipeline()?.addLast(HandlerNamer.name, ConnectionHandler())
-                    ctx?.fireChannelRead(connection)
+                    ctx.pipeline()?.addLast(HandlerNamer.name, ConnectionHandler())
+                    ctx.fireChannelRead(connection)
                 } else if (!session.isBufferEmpty()) {
                     // existing session with buffered packet
                     // buffer the packet
