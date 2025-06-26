@@ -19,8 +19,10 @@ import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
 import com.illiad.troad.service.handler.ip.InputHandler
+import io.netty.bootstrap.Bootstrap
 import io.netty.bootstrap.ServerBootstrap
 import io.netty.channel.ChannelInitializer
+import io.netty.channel.embedded.EmbeddedChannel
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
@@ -193,22 +195,17 @@ class TroadService : VpnService() {
 
     private fun runVpnPacketLoop() {
         Log.i(Consts.TAG, "VPN Packet Loop thread started.")
-        val workerGroup = NioEventLoopGroup(2)
         try {
-
-            val bootstrap = ServerBootstrap()
-            bootstrap.group(workerGroup).channel(NioServerSocketChannel::class.java)
-                .handler(object : ChannelInitializer<NioSocketChannel?>() {
-                    override fun initChannel(ch: NioSocketChannel?) {
-                        ch!!.pipeline().addLast(LoggingHandler(LogLevel.INFO)).addLast(InputHandler)
-                            .addLast(PacketDecoder).addLast(DemuxHandler)
-                    }
-                })
+            EmbeddedChannel().pipeline()
+                .addLast(LoggingHandler(LogLevel.INFO))
+                .addLast(InputHandler)
+                .addLast(PacketDecoder)
+                .addLast(DemuxHandler)
         } catch (e: InterruptedException) {
             isRunning = false
             throw RuntimeException(e)
         } finally {
-            workerGroup.shutdownGracefully()
+
         }
 
     }
@@ -255,8 +252,7 @@ class TroadService : VpnService() {
         // --- END OF PLACEHOLDER ---
 
         if (removeNotification) {
-            stopForeground(true) // True to remove the notification
-            // Or use stopForeground(STOP_FOREGROUND_REMOVE) for Android 13+
+            stopForeground(STOP_FOREGROUND_REMOVE)
             Log.d(Consts.TAG, "Foreground service stopped and notification removed.")
         } else {
             // If called due to setup failure before startForeground,
