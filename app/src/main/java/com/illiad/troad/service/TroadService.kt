@@ -19,13 +19,7 @@ import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
 import com.illiad.troad.service.handler.ip.InputHandler
-import io.netty.bootstrap.Bootstrap
-import io.netty.bootstrap.ServerBootstrap
-import io.netty.channel.ChannelInitializer
 import io.netty.channel.embedded.EmbeddedChannel
-import io.netty.channel.nio.NioEventLoopGroup
-import io.netty.channel.socket.nio.NioServerSocketChannel
-import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.logging.LogLevel
 import io.netty.handler.logging.LoggingHandler
 import java.io.FileInputStream
@@ -50,7 +44,7 @@ class TroadService : VpnService() {
         Log.d(Consts.TAG, "onStartCommand received: ${intent?.action}")
         when (intent?.action) {
             Consts.ACTION_CONNECT -> {
-                if (Utils.isRunning) {
+                if (isRunning) {
                     Log.d(Consts.TAG, "VPN already running.")
                     // Optionally update notification or parameters if needed
                     return START_STICKY
@@ -64,9 +58,9 @@ class TroadService : VpnService() {
 
                 // Prepare and establish the VPN connection
                 if (prepareAndEstablishVpn()) {
-                    Utils.isRunning = true
+                    runVpnPacketLoop()
+                    isRunning = true
                     startForeground(Consts.NOTIFICATION_ID, createNotification("VPN Connected"))
-
                     Log.d(Consts.TAG, "VPN connection established and foreground service started.")
                 } else {
                     Log.e(Consts.TAG, "Failed to establish VPN connection.")
@@ -81,7 +75,7 @@ class TroadService : VpnService() {
         }
         // If the service is killed, restart it with the last intent (if connect was successful)
         // Or START_NOT_STICKY if you don't want it to auto-restart.
-        return if (Utils.isRunning) START_STICKY else START_NOT_STICKY
+        return if (isRunning) START_STICKY else START_NOT_STICKY
     }
 
     private fun createNotificationChannel() { // Definition of your method
@@ -221,17 +215,17 @@ class TroadService : VpnService() {
         isRunning = false // Signal loops and other operations to stop
 
         // Interrupt the VPN packet handling thread if it's running
-        vpnReaderExecutor.shutdown()
+        vpnReaderExecutor?.shutdown()
         try {
-            vpnReaderExecutor.awaitTermination(
+            vpnReaderExecutor?.awaitTermination(
                 1000, MILLISECONDS
             ) // Wait for the thread to die for a short period
-            if (!vpnReaderExecutor.isTerminated) {
+            if (vpnReaderExecutor?.isTerminated != true) {
                 Log.w(Consts.TAG, "VPN packet thread did not terminate in time.")
             }
-        } catch (e: InterruptedException) {
+        } catch (_: InterruptedException) {
             Log.w(Consts.TAG, "Interrupted while waiting for VPN thread to join.")
-            vpnReaderExecutor.shutdownNow()
+            vpnReaderExecutor?.shutdownNow()
             // Preserve interrupt status
         }
 
@@ -325,7 +319,7 @@ class TroadService : VpnService() {
         Log.i(Consts.TAG, "VPN Service Destroyed.")
         // Ensure all resources are cleaned up if not already done.
         // This is a final safeguard.
-        if (isRunning || vpnInterface != null || !vpnReaderExecutor.isTerminated) {
+        if (isRunning || vpnInterface != null || vpnReaderExecutor?.isTerminated != true) {
             Log.w(
                 Consts.TAG, "onDestroy: Forcing cleanup as service might not have stopped cleanly."
             )
