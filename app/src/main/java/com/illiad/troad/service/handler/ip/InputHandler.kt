@@ -47,9 +47,8 @@ object InputHandler : ChannelInboundHandlerAdapter() {
     override fun channelActive(ctx: ChannelHandlerContext) {
         super.channelActive(ctx)
         println("InputStreamHandler: Channel is active. Starting VPN reader thread.")
-        // Executor is created here, but the actual reading starts in response to MoreBytes or initial active
-        // This is good for control.
-        setupAndSubmit(ctx)
+        // triger the reading of a packet
+        ctx.fireUserEventTriggered(MoreBytes())
     }
 
     private fun ensureReaderTaskIsRunning(ctx: ChannelHandlerContext) {
@@ -111,34 +110,6 @@ object InputHandler : ChannelInboundHandlerAdapter() {
         }
     }
 
-
-    private fun setupAndSubmit(ctx: ChannelHandlerContext) {
-        // Potentially re-creating executor on every MoreBytes might be slightly heavy.
-        // Consider creating it once if the thread can be paused/resumed or if
-        // the executor can manage a single persistent thread that waits on a signal.
-        // However, for single submission and then it dies, this is fine.
-        vpnReaderExecutor = Executors.newSingleThreadExecutor { r ->
-            val t = Thread(r, "vpn-reader-thread")
-            t.isDaemon = true
-            t
-        }
-        isRunning = true // Should ideally be managed more tightly with the actual read loop status
-
-        vpnReaderExecutor!!.submit {
-            try {
-                readFromVpnProactively(ctx, vpnReadFileChannel)
-            } catch (e: Exception) {
-                System.err.println("Error during VPN read submission/execution: ${e.message}")
-                isRunning = false // Good to set this on error
-                // Ensure ctx operations are on the event loop if this thread isn't it
-                if (ctx.channel().eventLoop().inEventLoop()) {
-                    handleReadException(ctx, e)
-                } else {
-                    ctx.channel().eventLoop().execute { handleReadException(ctx, e) }
-                }
-            }
-        }
-    }
 
     /**
      * Reads proactively from the VPN FileChannel.
