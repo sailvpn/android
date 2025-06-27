@@ -269,7 +269,7 @@ class TroadService : VpnService() {
      */
     private fun disconnectVpn() {
         Log.i(Consts.TAG, "disconnectVpn called.")
-        if (!Utils.isRunning) {
+        if (!isRunning) {
             Log.d(Consts.TAG, "VPN is not running, no need to disconnect further.")
             // Ensure service stops if it's lingering without being fully connected
             if (vpnInterface == null) stopSelf()
