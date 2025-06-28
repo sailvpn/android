@@ -28,12 +28,19 @@ object Utils {
     @Volatile
     var vpnReaderExecutor: ExecutorService? = null
     val isReaderTaskSubmitted = AtomicBoolean(false)
+
     // Lock and Condition for signaling the reader thread
     val readerLock = ReentrantLock()
     val readCondition: Condition = readerLock.newCondition()
+
     @Volatile
     var workAvailable = false // Guard for spurious wakeups and initial start
 
+    val MTU = 65575
+
+    var serverDomain: String = "127.0.0.1"
+    var serverPort: Int = 2080
+    var sharedSecret: String = "sharedSecret"
 
     /**
      * Closes the specified channel after all queued write requests are flushed.

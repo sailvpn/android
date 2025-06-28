@@ -16,6 +16,10 @@ import com.illiad.troad.service.Utils.vpnReadFileChannel
 import com.illiad.troad.service.Utils.vpnWriteFileChannel
 import com.illiad.troad.service.Utils.vpnReaderExecutor
 import com.illiad.troad.service.Utils.isRunning
+import com.illiad.troad.service.Utils.serverDomain
+import com.illiad.troad.service.Utils.serverPort
+import com.illiad.troad.service.Utils.sharedSecret
+import com.illiad.troad.service.Utils.MTU
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
 import com.illiad.troad.service.handler.ip.InputHandler
@@ -28,11 +32,6 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit.MILLISECONDS
 
 class TroadService : VpnService() {
-
-    // To pass parameters from your UI to the service (optional)
-    private var serverAddress: String? = null
-    private var serverPort: Int = 0
-    private var sharedSecret: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -50,16 +49,17 @@ class TroadService : VpnService() {
                     return START_STICKY
                 }
                 // Retrieve parameters from the intent (if you pass them this way)
-                serverAddress = intent.getStringExtra(Consts.EXTRA_SERVER_ADDRESS)
+                serverDomain = intent.getStringExtra(Consts.EXTRA_SERVER_ADDRESS)!!
                 serverPort = intent.getIntExtra(Consts.EXTRA_SERVER_PORT, 0)
-                sharedSecret = intent.getStringExtra(Consts.EXTRA_SHARED_SECRET)
+                sharedSecret = intent.getStringExtra(Consts.EXTRA_SHARED_SECRET)!!
 
-                Log.d(Consts.TAG, "Connecting VPN to $serverAddress:$serverPort")
+                Log.d(Consts.TAG, "Connecting VPN to $serverDomain:$serverPort")
 
                 // Prepare and establish the VPN connection
                 if (prepareAndEstablishVpn()) {
-                    runVpnPacketLoop()
+                    // isRunning must be set before starting the loop
                     isRunning = true
+                    runVpnPacketLoop()
                     startForeground(Consts.NOTIFICATION_ID, createNotification("VPN Connected"))
                     Log.d(Consts.TAG, "VPN connection established and foreground service started.")
                 } else {
@@ -148,9 +148,9 @@ class TroadService : VpnService() {
                 .addAddress(tunIp, 24)      // VPN client's virtual IP
                 .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
                 .addDnsServer(dns1).addDnsServer(dns2)
-                .setMtu(1400)                      // Set MTU (adjust as needed)
+                .setMtu(MTU)                      // Set MTU (adjust as needed)
             //  .addAllowedApplication("com.example.anotherapp") // For per-app VPN (optional)
-            //  .addDisallowedApplication(packageName)           // Exclude this app (optional)
+                .addDisallowedApplication(packageName)           // Exclude this app (optional)
 
             // Optional: Configure an intent to open your app's settings if needed before connection
             // val configureIntent = Intent(this, YourVpnSettingsActivity::class.java)
