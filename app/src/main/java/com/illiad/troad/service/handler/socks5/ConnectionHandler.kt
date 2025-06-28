@@ -15,7 +15,6 @@ import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.socksx.v5.DefaultSocks5CommandRequest
 import io.netty.handler.codec.socksx.v5.Socks5AddressType
 import io.netty.handler.codec.socksx.v5.Socks5CommandType
-import io.netty.handler.ssl.SslHandler
 import io.netty.util.concurrent.GenericFutureListener
 import io.netty.util.concurrent.Future
 
@@ -56,7 +55,13 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
             .addListener(ChannelFutureListener { future: ChannelFuture? ->
                 if (future!!.isSuccess) {
                     val ch = future.channel()
-                    val sslHandler: SslHandler = Ssl.sslCtx!!.newHandler(
+                    //val sslHandler: SslHandler = Ssl.sslCtx!!.newHandler(
+                    //    ch.alloc(),
+                    //    serverDomain,
+                    //    serverPort
+                    //)
+                    // this is for testing only, do not use in production
+                    val sslHandler = Ssl.createInsecureSslContext().newHandler(
                         ch.alloc(),
                         serverDomain,
                         serverPort
