@@ -55,7 +55,7 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
             .addListener(ChannelFutureListener { future: ChannelFuture? ->
                 if (future!!.isSuccess) {
                     val ch = future.channel()
-                    //val sslHandler: SslHandler = Ssl.sslCtx!!.newHandler(
+                    //val sslHandler = Ssl.sslCtx!!.newHandler(
                     //    ch.alloc(),
                     //    serverDomain,
                     //    serverPort
