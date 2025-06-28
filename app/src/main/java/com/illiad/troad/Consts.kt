@@ -3,6 +3,9 @@ package com.illiad.troad
 object Consts {
     const val TAG = "TroadService"
 
+    const val TUN_IP = "10.8.0.2"
+    const val DNS1 = "8.8.8.8"
+    const val DNS2 = "8.8.4.4"
     const val ACTION_CONNECT = "com.illiad.troad.CONNECT"
     const val ACTION_DISCONNECT = "com.illiad.troad.DISCONNECT"
 
