@@ -46,8 +46,8 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
             connection.destinationPort!!
         )
         b.group(ctx.channel().eventLoop()).channel(NioSocketChannel::class.java)
-            .option<Int?>(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .option<Boolean?>(ChannelOption.SO_KEEPALIVE, true)
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+            .option(ChannelOption.SO_KEEPALIVE, true)
             .handler(object : ChannelInitializer<SocketChannel?>() {
                 override fun initChannel(sc: SocketChannel?) {}
             }) // connect to the proxy server, and forward the Socks connect command message to the remote server
