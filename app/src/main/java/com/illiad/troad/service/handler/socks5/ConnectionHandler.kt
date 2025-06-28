@@ -2,12 +2,12 @@ package com.illiad.troad.service.handler.socks5
 
 import com.illiad.troad.service.HandlerNamer
 import com.illiad.troad.service.Utils.closeOnFlush
-import com.illiad.troad.R
-import com.illiad.troad.service.Rss
 import com.illiad.troad.service.codec.socks5.V5ClientDecoder
 import com.illiad.troad.service.codec.socks5.V5ClientEncoder
 import com.illiad.troad.service.handler.ip.Connection
 import com.illiad.troad.service.security.Ssl
+import com.illiad.troad.service.Utils.serverDomain
+import com.illiad.troad.service.Utils.serverPort
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.*
 import io.netty.channel.socket.SocketChannel
@@ -52,14 +52,14 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
             .handler(object : ChannelInitializer<SocketChannel?>() {
                 override fun initChannel(sc: SocketChannel?) {}
             }) // connect to the proxy server, and forward the Socks connect command message to the remote server
-            .connect(Rss.getString(R.string.remoteHost), Rss.getInt(R.integer.remotePort))
+            .connect(serverDomain, serverPort)
             .addListener(ChannelFutureListener { future: ChannelFuture? ->
                 if (future!!.isSuccess) {
                     val ch = future.channel()
                     val sslHandler: SslHandler = Ssl.sslCtx!!.newHandler(
                         ch.alloc(),
-                        Rss.getString(R.string.remoteHost),
-                        Rss.getInt(R.integer.remotePort)
+                        serverDomain,
+                        serverPort
                     )
                     val pipeline = ch.pipeline()
                     pipeline.addLast(sslHandler)
