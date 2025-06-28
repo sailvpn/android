@@ -2,6 +2,7 @@ package com.illiad.troad.service.security
 
 import com.illiad.troad.R
 import com.illiad.troad.service.Rss
+import com.illiad.troad.service.Utils.sharedSecret
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.util.Random
@@ -14,7 +15,7 @@ object SecretImp : Secret {
         get() {
             val digest =
                 MessageDigest.getInstance(Cryptos.valueOf(Rss.getString(R.string.crypto)).value!!)
-            return digest.digest(Rss.getString(R.string.secret).encodeToByteArray())
+            return digest.digest(sharedSecret.encodeToByteArray())
         }
 
     override var cryptoType: Cryptos? = null
