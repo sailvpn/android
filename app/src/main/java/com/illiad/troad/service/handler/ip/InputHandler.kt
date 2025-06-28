@@ -8,6 +8,7 @@ import com.illiad.troad.service.Utils.isReaderTaskSubmitted
 import com.illiad.troad.service.Utils.readCondition
 import com.illiad.troad.service.Utils.readerLock
 import com.illiad.troad.service.Utils.workAvailable
+import com.illiad.troad.service.Utils.MTU
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
@@ -148,7 +149,7 @@ object InputHandler : ChannelInboundHandlerAdapter() {
 
                 try {
                     // Attempt to read from the TUN device's FileChannel
-                    bytesRead = byteBuf.writeBytes(tunFileChannel, byteBuf.writableBytes())
+                    bytesRead = byteBuf.writeBytes(tunFileChannel, MTU)
                 } catch (ioe: IOException) {
                     // An IOException during the actual read operation
                     System.err.println("VPN Reader: IOException during tunFileChannel.read: ${ioe.message}")
