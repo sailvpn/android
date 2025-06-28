@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <integer name="localPort">3080</integer>
-    <string name="remoteHost">127.0.0.1</string>
-    <integer name="remotePort">2080</integer>
     <string name="crypto">SHA_256</string>
     <integer name="min">1</integer>
     <integer name="max">128</integer>
-    <string name="secret">password</string>
     <string name="trust_store_type">PKCS12</string>
     <string name="trust_store">server.p12</string>
     <string name="trust_store_password">changeit</string>
