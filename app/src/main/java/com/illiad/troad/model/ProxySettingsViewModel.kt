@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 class ProxySettingsViewModel(
     app: Application,
-    private val tStore: TroadStore, // Inject or instantiate
+    private val tStore: TroadStore // Inject or instantiate
 ) : AndroidViewModel(app) {
 
     // --- State for UI TextFields (what the user is currently typing) ---

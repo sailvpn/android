@@ -1,6 +1,8 @@
 package com.illiad.troad.view
 
 import android.annotation.SuppressLint
+import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
@@ -12,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -19,6 +22,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.illiad.troad.model.ProxySettingsViewModel
+import com.illiad.troad.model.TroadStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +50,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
             )
 
             OutlinedTextField(
-                value = viewModel.serverDomain,
+                value = viewModel.uiServerDomain,
                 onValueChange = { viewModel.onDomainChange(it) },
                 label = { Text("Server Domain or IP") },
                 modifier = Modifier.fillMaxWidth(),
@@ -53,7 +59,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
             )
 
             OutlinedTextField(
-                value = viewModel.serverPort,
+                value = viewModel.uiServerPort,
                 onValueChange = { viewModel.onPortChange(it) },
                 label = { Text("Server Port") },
                 modifier = Modifier.fillMaxWidth(),
@@ -64,7 +70,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
 
             // New Secret Field
             OutlinedTextField(
-                value = viewModel.sharedSecret,
+                value = viewModel.uiSharedSecret,
                 onValueChange = { viewModel.onSecretChange(it) },
                 label = { Text("Shared Secret (Optional)") },
                 modifier = Modifier.fillMaxWidth(),
@@ -115,7 +121,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
                 Button(
                     onClick = { viewModel.startProxyService() },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = viewModel.errorMessage == null && viewModel.serverDomain.isNotBlank() && viewModel.serverPort.isNotBlank()
+                    enabled = viewModel.errorMessage == null && viewModel.uiServerDomain.isNotBlank() && viewModel.uiServerPort.isNotBlank()
                 ) {
                     Text("Start Proxy Service")
                 }
@@ -128,6 +134,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
     }
 }
 
+@SuppressLint("ViewModelConstructorInComposable")
 @Preview(showBackground = true)
 @Composable
 fun ProxySettingsScreenPreview() {
@@ -142,10 +149,10 @@ fun ProxySettingsScreenPreview() {
 fun ProxySettingsScreenRunningPreview() {
     MaterialTheme {
         val previewViewModel = ProxySettingsViewModel()
-        previewViewModel.isProxyRunning = true
-        previewViewModel.serverDomain = "proxy.example.com"
-        previewViewModel.serverPort = "8080"
-        previewViewModel.sharedSecret = "mysecret" // Add for preview
+        previewViewModel.isProxyRunning = false
+        previewViewModel.uiServerDomain = "proxy.example.com"
+        previewViewModel.uiServerPort = "8080"
+        previewViewModel.uiSharedSecret = "mysecret" // Add for preview
         ProxySettingsScreen(viewModel = previewViewModel)
     }
 }
