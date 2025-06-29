@@ -147,12 +147,50 @@ fun ProxySettingsScreenPreview() {
 @Preview(showBackground = true)
 @Composable
 fun ProxySettingsScreenRunningPreview() {
+    val context = LocalContext.current
+    // Create a dummy Application instance for the preview
+    val dummyApplicationForPreview = object : Application() {
+        // You might override getApplicationContext() if needed,
+        // but often it's not strictly necessary if the ViewModel
+        // just needs *an* Application object to satisfy its constructor.
+        override fun getApplicationContext(): Context {
+            // You could return 'this' or 'context.applicationContext' from the preview
+            // Depending on what the ViewModel actually does with it.
+            // Returning the preview's application context is often safer.
+            return context.applicationContext
+        }
+    }
+
     MaterialTheme {
-        val previewViewModel = ProxySettingsViewModel()
+        val app = dummyApplicationForPreview
+        val tStore = PreviewTroadStore(context)
+        val previewViewModel =
+            ProxySettingsViewModel(app, tStore)
         previewViewModel.isProxyRunning = false
         previewViewModel.uiServerDomain = "proxy.example.com"
         previewViewModel.uiServerPort = "8080"
         previewViewModel.uiSharedSecret = "mysecret" // Add for preview
         ProxySettingsScreen(viewModel = previewViewModel)
     }
+
 }
+
+// Dummy/Preview implementation of SettingsRepository for previews
+class PreviewTroadStore(private val context: Context) : TroadStore(context) {
+    // Override methods to return dummy data or do nothing for previews
+    override val serverDomainFlow: Flow<String> = flowOf("preview.domain.com")
+    override val serverPortFlow: Flow<Int> = flowOf(1234)
+    override val sharedSecretFlow: Flow<String> = flowOf("previewSecret")
+    // ... override other flows and suspend functions as needed for previews
+
+    override suspend fun saveServerDomain(domain: String) { /* No-op for preview */
+    }
+
+    override suspend fun saveServerPort(port: Int) { /* No-op for preview */
+    }
+
+    override suspend fun saveSharedSecret(secret: String) { /* No-op for preview */
+    }
+    // ...
+}
+
