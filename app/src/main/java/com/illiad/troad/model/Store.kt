@@ -7,8 +7,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
 
 // At the top level of your Kotlin file (e.g., outside a class)
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "troad_app_store")
@@ -19,8 +22,10 @@ object StoreKeys {
     val SHARED_SECRET = stringPreferencesKey("shared_secret")
     val TUN_IP = stringPreferencesKey("tun_ip")
 }
+@Singleton
+class TroadStore @Inject constructor(@ApplicationContext private val context: Context) {
 
-class TroadStore(private val context: Context) {
+    init { }
 
     val serverDomainFlow: Flow<String> = context.dataStore.data
         .map { preferences ->

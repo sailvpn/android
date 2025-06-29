@@ -6,14 +6,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-class ProxySettingsViewModel(
-    app: Application,
-    private val tStore: TroadStore // Inject or instantiate
+@HiltViewModel
+class ProxySettingsViewModel @Inject constructor(
+    app: Application, private val tStore: TroadStore // Inject or instantiate
 ) : AndroidViewModel(app) {
 
     // --- State for UI TextFields (what the user is currently typing) ---
@@ -27,9 +29,7 @@ class ProxySettingsViewModel(
     val tStoreServerDomain =
         tStore.serverDomainFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val tStoreServerPort = tStore.serverPortFlow.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        1080
+        viewModelScope, SharingStarted.WhileSubscribed(5000), 1080
     ) // Default port
     val tStoreSharedSecret =
         tStore.sharedSecretFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
