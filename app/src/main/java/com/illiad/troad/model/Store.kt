@@ -23,38 +23,38 @@ object StoreKeys {
     val TUN_IP = stringPreferencesKey("tun_ip")
 }
 @Singleton
-class TroadStore @Inject constructor(@ApplicationContext private val context: Context) {
+open class TroadStore @Inject constructor(@ApplicationContext private val context: Context) {
 
     init { }
 
-    val serverDomainFlow: Flow<String> = context.dataStore.data
+    open val serverDomainFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SERVER_DOMAIN] ?: ""
         }
 
-    suspend fun saveServerDomain(domain: String) {
+    open suspend fun saveServerDomain(domain: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_DOMAIN] = domain
         }
     }
 
-    val serverPortFlow: Flow<Int> = context.dataStore.data
+    open val serverPortFlow: Flow<Int> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SERVER_PORT] ?: 1080
         }
 
-    suspend fun saveServerPort(port: Int) {
+    open suspend fun saveServerPort(port: Int) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_PORT] = port
         }
     }
 
-    val sharedSecretFlow: Flow<String> = context.dataStore.data
+    open val sharedSecretFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SHARED_SECRET] ?: "password"
         }
 
-    suspend fun saveSharedSecret(secret: String) {
+    open suspend fun saveSharedSecret(secret: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SHARED_SECRET] = secret
         }
