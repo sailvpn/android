@@ -1,58 +1,129 @@
 package com.illiad.troad.model
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
-class ProxySettingsViewModel : ViewModel() {
-    var serverDomain by mutableStateOf("")
-    var serverPort by mutableStateOf("")
-    var sharedSecret by mutableStateOf("") // New field for the secret
+class ProxySettingsViewModel(
+    app: Application,
+    private val tStore: TroadStore, // Inject or instantiate
+) : AndroidViewModel(app) {
+
+    // --- State for UI TextFields (what the user is currently typing) ---
+    var uiServerDomain by mutableStateOf("")
+    var uiServerPort by mutableStateOf("") // Keep as String for flexible input
+    var uiSharedSecret by mutableStateOf("")
+
+    // --- StateFlows from DataStore (the persisted values) ---
+    // These are what you'd typically use if you want parts of your UI
+    // to always reflect the *saved* state, or for other logic.
+    val tStoreServerDomain =
+        tStore.serverDomainFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val tStoreServerPort = tStore.serverPortFlow.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        1080
+    ) // Default port
+    val tStoreSharedSecret =
+        tStore.sharedSecretFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     var isProxyRunning by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
 
-    fun onDomainChange(newDomain: String) {
-        serverDomain = newDomain
-        validateInputs()
+    init {
+        // Load initial values from DataStore into UI fields
+        viewModelScope.launch {
+            uiServerDomain = tStoreServerDomain.first() // Get the first emitted (current) value
+            uiServerPort = tStoreServerPort.first()
+                .let { if (it == 0) "" else it.toString() } // Handle default/empty
+            uiSharedSecret = tStoreSharedSecret.first()
+            validateInputs() // Validate loaded data
+        }
     }
 
-    fun onPortChange(newPort: String) {
-        if (newPort.all { it.isDigit() } && newPort.length <= 5) {
-            serverPort = newPort
-            validateInputs()
+    // --- Validation (Operates on UI input states) ---
+    private fun validateInputs(): Boolean {
+        if (uiServerDomain.isBlank()) {
+            errorMessage = "Server domain cannot be empty."
+            return false
         }
+
+        if (uiServerPort.isBlank()) {
+            errorMessage = "Server port cannot be empty."
+            return false
+        }
+
+        val port = uiServerPort.toIntOrNull()
+        if (port == null || port !in 1..65535) {
+            errorMessage = "Invalid port number. Must be between 1 and 65535."
+            return false
+        }
+
+        // Add other validations as needed (e.g., for uiSharedSecret)
+
+        errorMessage = null
+        return true
+    }
+
+    // --- UI Event Handlers ---
+    fun onDomainChange(newDomain: String) {
+        uiServerDomain = newDomain
+        validateInputs()
+        // Optional: Save on-the-fly if desired, but often better to save on explicit action
+        // if (validateInputs()) {
+        //     viewModelScope.launch { tStore.saveServerDomain(uiServerDomain) }
+        // }
+    }
+
+    fun onPortChange(newPortString: String) {
+        uiServerPort = newPortString
+        validateInputs()
+        // Optional: Save on-the-fly
+        // if (validateInputs()) {
+        //     uiServerPort.toIntOrNull()?.let { portInt ->
+        //         viewModelScope.launch { tStore.saveServerPort(portInt) }
+        //     }
+        // }
     }
 
     fun onSecretChange(newSecret: String) {
-        sharedSecret = newSecret
-        // You might add validation for the secret here if needed
-        // For example, if it cannot be empty when a certain proxy type is selected.
-        // For now, we'll assume it can be empty or has no specific format validation.
-        validateInputs() // Re-run validation if secret affects button enablement
-    }
-
-    private fun validateInputs() {
-        // Basic validation - you might want to adjust this based on the secret's requirements
-        if (serverDomain.isBlank() || serverPort.isBlank()) {
-            errorMessage = "Domain and Port cannot be empty."
-        } else if (serverPort.toIntOrNull() == null || serverPort.toInt() !in 1..65535) {
-            errorMessage = "Invalid Port number."
-        }
-        // else if (sharedSecret.isBlank()){ // Example: if secret was mandatory
-        //     errorMessage = "Secret cannot be empty."
-        // }
-        else {
-            errorMessage = null
-        }
-    }
-
-    fun startProxyService() {
+        uiSharedSecret = newSecret
         validateInputs()
-        if (errorMessage == null) {
-            println("Attempting to start proxy with Domain: $serverDomain, Port: $serverPort, Secret: $sharedSecret")
-            isProxyRunning = true
+        // Optional: Save on-the-fly
+        // if (validateInputs()) {
+        //     viewModelScope.launch { tStore.saveSharedSecret(uiSharedSecret) }
+        // }
+    }
+
+    // --- Actions ---
+    fun startProxyService() {
+        if (validateInputs()) { // Crucial check before trying to save and start
+            viewModelScope.launch {
+                // Save the validated UI inputs to DataStore
+                tStore.saveServerDomain(uiServerDomain)
+                uiServerPort.toIntOrNull()
+                    ?.let { portInt -> // Should be valid due to validateInputs()
+                        tStore.saveServerPort(portInt)
+                    }
+                tStore.saveSharedSecret(uiSharedSecret)
+
+                // Now that settings are saved, proceed to start the service
+                // Use the persisted values (or the just-saved UI values if you prefer, they should match)
+                println(
+                    "Attempting to start proxy with Domain: ${tStoreServerDomain.value}, " + "Port: ${tStoreServerPort.value}, Secret: ${tStoreSharedSecret.value}"
+                )
+                // Actual logic to start your VPN service using the validated and saved values
+                isProxyRunning = true
+            }
         }
+        // If validateInputs() is false, errorMessage is already set for the UI
     }
 
     fun stopProxyService() {
