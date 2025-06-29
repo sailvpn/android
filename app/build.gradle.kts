@@ -58,8 +58,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     // Material Icons (still need this explicitly if not covered by a very specific BOM setup)
-    implementation("androidx.compose.material:material-icons-core:1.7.0-beta01")
-    implementation("androidx.compose.material:material-icons-extended:1.7.0-beta01")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1") // For ViewModel
 
     // https://mvnrepository.com/artifact/io.netty/netty-all
