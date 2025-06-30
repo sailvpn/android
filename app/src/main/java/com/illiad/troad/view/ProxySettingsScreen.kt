@@ -28,14 +28,13 @@ import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
+fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
     var passwordVisible by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(title = { Text("Proxy Settings") })
-        }
-    ) { paddingValues ->
+        }) { paddingValues ->
         Column(
             modifier = Modifier
                 .padding(paddingValues)
@@ -78,8 +77,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 trailingIcon = {
-                    val image = if (passwordVisible)
-                        Icons.Filled.Visibility
+                    val image = if (passwordVisible) Icons.Filled.Visibility
                     else Icons.Filled.VisibilityOff
 
                     // Localized description for accessibility services
@@ -126,8 +124,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
                     Text("Start Proxy Service")
                 }
                 Text(
-                    "Proxy Status: Stopped",
-                    style = MaterialTheme.typography.bodyMedium
+                    "Proxy Status: Stopped", style = MaterialTheme.typography.bodyMedium
                 )
             }
         }
@@ -139,7 +136,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel = viewModel()) {
 @Composable
 fun ProxySettingsScreenPreview() {
     MaterialTheme {
-        ProxySettingsScreen()
+        ProxySettingsScreen(viewModel())
     }
 }
 
@@ -164,8 +161,7 @@ fun ProxySettingsScreenRunningPreview() {
     MaterialTheme {
         val app = dummyApplicationForPreview
         val tStore = PreviewTroadStore(context)
-        val previewViewModel =
-            ProxySettingsViewModel(app, tStore)
+        val previewViewModel = ProxySettingsViewModel(app, tStore)
         previewViewModel.isProxyRunning = false
         previewViewModel.uiServerDomain = "proxy.example.com"
         previewViewModel.uiServerPort = "8080"

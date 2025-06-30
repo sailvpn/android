@@ -9,23 +9,30 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
+import com.illiad.troad.model.ProxySettingsViewModel
+import com.illiad.troad.model.ProxySettingsViewModelFactory
 import com.illiad.troad.view.ProxySettingsScreen
 
 class MainActivity : ComponentActivity() {
+
+    private val proxySettingsViewModel: ProxySettingsViewModel by viewModels {
+        ProxySettingsViewModelFactory(application)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             TroadTheme { // Apply your app's theme
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
-                    ProxySettingsScreen()
+                    ProxySettingsScreen(proxySettingsViewModel)
                 }
             }
         }
@@ -51,9 +58,7 @@ class MainActivity : ComponentActivity() {
         // If using system-wide sendBroadcast in the service:
         ContextCompat.registerReceiver(
             this, // Context
-            vpnStatusReceiver,
-            intentFilter,
-            ContextCompat.RECEIVER_EXPORTED // Specify exported
+            vpnStatusReceiver, intentFilter, ContextCompat.RECEIVER_EXPORTED // Specify exported
         )
     }
 

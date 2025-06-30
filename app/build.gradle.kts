@@ -2,8 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    kotlin("kapt") // Or id 'org.jetbrains.kotlin.kapt'
-    id("com.google.dagger.hilt.android")
 }
 
 android {
@@ -71,8 +69,6 @@ dependencies {
     // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-packetfactory-static
     implementation("org.pcap4j:pcap4j-packetfactory-static:2.0.0-alpha.6")
 
-    implementation("com.google.dagger:hilt-android:2.56.2") // Check for the latest version
-    kapt("com.google.dagger:hilt-compiler:2.56.2") // Check for the latest version
 
     // For ViewModel support with Hilt (specifically for @HiltViewModel and ViewModel lifecycle)
     // This is implicitly included with hilt-android, but sometimes explicit inclusion
@@ -96,9 +92,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-}
-
-// Allow references to generated code
-kapt {
-    correctErrorTypes = true
 }
