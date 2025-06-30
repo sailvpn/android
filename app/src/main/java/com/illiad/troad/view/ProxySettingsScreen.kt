@@ -71,7 +71,7 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
             OutlinedTextField(
                 value = viewModel.uiSharedSecret,
                 onValueChange = { viewModel.onSecretChange(it) },
-                label = { Text("Shared Secret (Optional)") },
+                label = { Text("Shared Secret") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
