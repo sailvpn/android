@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
 import com.illiad.troad.model.ProxySettingsViewModel
 import com.illiad.troad.model.ProxySettingsViewModelFactory
@@ -40,11 +41,11 @@ class MainActivity : ComponentActivity() {
 
     private val vpnStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Consts.ACTION_VPN_STATUS_BROADCAST) {
+            if (intent?.action == ACTION_VPN_STATUS_BROADCAST) {
                 val message = intent.getStringExtra(Consts.EXTRA_STATUS_MESSAGE)
                 val isConnected = intent.getBooleanExtra(Consts.EXTRA_IS_CONNECTED, false)
-
                 // Update your UI here based on the message and isConnected state
+                proxySettingsViewModel.updateVpnStatus(isConnected, message)
                 Log.d("MyActivity", "VPN Status Received: $message, Connected: $isConnected")
                 // e.g., myStatusTextView.text = message
                 // e.g., myConnectButton.isEnabled = !isConnected
@@ -54,7 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        val intentFilter = IntentFilter(Consts.ACTION_VPN_STATUS_BROADCAST)
+        val intentFilter = IntentFilter(ACTION_VPN_STATUS_BROADCAST)
         // If using system-wide sendBroadcast in the service:
         ContextCompat.registerReceiver(
             this, // Context

@@ -4,7 +4,6 @@ import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.Utils.vpnReaderExecutor
 import com.illiad.troad.service.Utils.vpnReadFileChannel
-import com.illiad.troad.service.Utils.isReaderTaskSubmitted
 import com.illiad.troad.service.Utils.readCondition
 import com.illiad.troad.service.Utils.readerLock
 import com.illiad.troad.service.Utils.workAvailable
@@ -49,66 +48,60 @@ object InputHandler : ChannelInboundHandlerAdapter() {
         super.channelActive(ctx)
         println("InputStreamHandler: Channel is active. Starting VPN reader thread.")
         // triger the reading of a packet
-        ctx.fireUserEventTriggered(MoreBytes())
+        triggerReadWithLock()
     }
 
     private fun ensureReaderTaskIsRunning(ctx: ChannelHandlerContext) {
-        if (isReaderTaskSubmitted.compareAndSet(false, true)) {
-            vpnReaderExecutor!!.submit {
-                persistentReaderLoopWithLock(ctx)
-            }
-        }
+
+        //put isRunning = true as close as possible (on channelAdded path)to lock
+        isRunning = true
+        vpnReaderExecutor!!.submit { persistentReaderLoopWithLock(ctx) }
+
     }
 
     private fun persistentReaderLoopWithLock(ctx: ChannelHandlerContext) {
         println("VPN Reader Thread (Lock): Persistent loop started. Waiting for signals...")
-        try {
-            while (isRunning && !Thread.currentThread().isInterrupted) {
-                readerLock.withLock { // Acquires the lock
-                    // Wait while no work is available and still running
-                    while (!workAvailable && isRunning && !Thread.currentThread().isInterrupted) {
-                        println("VPN Reader Thread (Lock): Awaiting signal...")
-                        try {
-                            readCondition.await() // Releases lock, waits, reacquires lock on wakeup
-                        } catch (_: InterruptedException) {
-                            Thread.currentThread().interrupt() // Restore interrupt status
-                            println("VPN Reader Thread (Lock): Await interrupted.")
-                            // Break from inner while, outer loop will check interrupt status
-                            return@persistentReaderLoopWithLock // Exit method
-                        }
-                    }
-                    // If we are here, either workAvailable is true, or !isRunning, or interrupted.
-                    if (!isRunning || Thread.currentThread().isInterrupted) {
+        while (isRunning && !Thread.currentThread().isInterrupted) {
+            readerLock.withLock { // Acquires the lock
+                // Wait while no work is available and still running
+                while (!workAvailable && isRunning && !Thread.currentThread().isInterrupted) {
+                    println("VPN Reader Thread (Lock): Awaiting signal...")
+                    try {
+                        readCondition.await() // Releases lock, waits, reacquires lock on wakeup
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt() // Restore interrupt status
+                        println("VPN Reader Thread (Lock): Await interrupted.")
+                        // Break from inner while, outer loop will check interrupt status
                         return@persistentReaderLoopWithLock // Exit method
                     }
-                    // Reset workAvailable flag after waking up to process one unit of work
-                    workAvailable = false
-                } // Lock is released here
-
-                // We've been signaled and conditions are met
-                println("VPN Reader Thread (Lock): Awakened. Starting proactive read.")
-                if (ctx.channel().isActive && vpnReadFileChannel.isOpen) {
-                    try {
-                        readFromVpnProactively(ctx, vpnReadFileChannel)
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                        println("VPN Reader Thread (Lock): Proactive read was interrupted.")
-                        // Loop will check interrupt status and exit
-                    } catch (ioe: IOException) {
-                        System.err.println("VPN Reader Thread (Lock): IOException during proactive read: ${ioe.message}")
-                        handleReadExceptionOnEventLoop(ctx, ioe)
-                    } catch (e: Exception) {
-                        System.err.println("VPN Reader Thread (Lock): Unexpected error during proactive read: ${e.message}")
-                        handleReadExceptionOnEventLoop(ctx, e)
-                    }
-                } else {
-                    println("VPN Reader Thread (Lock): Awakened, but channel not active or file not open.")
                 }
+                // If we are here, either workAvailable is true, or !isRunning, or interrupted.
+                if (!isRunning || Thread.currentThread().isInterrupted) {
+                    return@persistentReaderLoopWithLock // Exit method
+                }
+                // Reset workAvailable flag after waking up to process one unit of work
+                workAvailable = false
+            } // Lock is released here
+
+            // We've been signaled and conditions are met
+            println("VPN Reader Thread (Lock): Awakened. Starting proactive read.")
+
+            try {
+                readFromVpnProactively(ctx, vpnReadFileChannel)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                println("VPN Reader Thread (Lock): Proactive read was interrupted.")
+                // Loop will check interrupt status and exit
+            } catch (ioe: IOException) {
+                System.err.println("VPN Reader Thread (Lock): IOException during proactive read: ${ioe.message}")
+                handleReadExceptionOnEventLoop(ctx, ioe)
+            } catch (e: Exception) {
+                System.err.println("VPN Reader Thread (Lock): Unexpected error during proactive read: ${e.message}")
+                handleReadExceptionOnEventLoop(ctx, e)
             }
-        } finally {
-            println("VPN Reader Thread (Lock): Persistent loop finished.")
-            isReaderTaskSubmitted.set(false)
+
         }
+
     }
 
 
@@ -332,7 +325,6 @@ object InputHandler : ChannelInboundHandlerAdapter() {
             }
         }
         vpnReaderExecutor = null // Allow GC
-        isReaderTaskSubmitted.set(false) // Reset for potential re-addition
         println("InputHandler: VPN Reader Executor shutdown complete.")
     }
 

@@ -31,10 +31,18 @@ import kotlinx.coroutines.flow.flowOf
 fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
     var passwordVisible by remember { mutableStateOf(false) }
 
+    // Collect the raw input values for the TextFields
+    val domainInput by viewModel.uiServerDomainInput.collectAsState()
+    val portInput by viewModel.uiServerPortInput.collectAsState()
+    val secretInput by viewModel.uiSharedSecretInput.collectAsState()
+
+    // Observe other states like errorMessage and isProxyRunning directly from the ViewModel
+    // val currentErrorMessage = viewModel.errorMessage // No need to collect if it's simple State
+    // val isProxyCurrentlyRunning = viewModel.isProxyRunning
+
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Proxy Settings") })
-        }) { paddingValues ->
+        topBar = { TopAppBar(title = { Text("Proxy Settings") }) }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .padding(paddingValues)
@@ -49,27 +57,33 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
             )
 
             OutlinedTextField(
-                value = viewModel.uiServerDomain,
+                value = domainInput, // Use raw input for display
                 onValueChange = { viewModel.onDomainChange(it) },
                 label = { Text("Server Domain or IP") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                isError = viewModel.errorMessage?.contains("Domain") == true
+                // isError is based on the viewModel's errorMessage state
+                isError = viewModel.errorMessage?.contains("Domain", ignoreCase = true) == true ||
+                        viewModel.errorMessage?.contains(
+                            "empty",
+                            ignoreCase = true
+                        ) == true && viewModel.debouncedUiServerDomain.isBlank()
+
             )
 
             OutlinedTextField(
-                value = viewModel.uiServerPort,
+                value = portInput, // Use raw input for display
                 onValueChange = { viewModel.onPortChange(it) },
                 label = { Text("Server Port") },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                isError = viewModel.errorMessage?.contains("Port") == true
+                isError = viewModel.errorMessage?.contains("Port", ignoreCase = true) == true ||
+                        viewModel.errorMessage?.contains("Invalid port", ignoreCase = true) == true
             )
 
-            // New Secret Field
             OutlinedTextField(
-                value = viewModel.uiSharedSecret,
+                value = secretInput, // Use raw input for display
                 onValueChange = { viewModel.onSecretChange(it) },
                 label = { Text("Shared Secret") },
                 modifier = Modifier.fillMaxWidth(),
@@ -77,17 +91,14 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 trailingIcon = {
-                    val image = if (passwordVisible) Icons.Filled.Visibility
-                    else Icons.Filled.VisibilityOff
-
-                    // Localized description for accessibility services
+                    val image =
+                        if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                     val description = if (passwordVisible) "Hide secret" else "Show secret"
-
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(imageVector = image, description)
                     }
-                }
-                // isError = viewModel.errorMessage?.contains("Secret") == true // If you add validation for secret
+                },
+                isError = viewModel.errorMessage?.contains("Secret", ignoreCase = true) == true
             )
 
             if (viewModel.errorMessage != null) {
@@ -100,6 +111,12 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Enable button based on absence of error and presence of necessary (debounced) inputs
+            val enableStartButton = viewModel.errorMessage == null &&
+                    viewModel.debouncedUiServerDomain.isNotBlank() &&
+                    viewModel.debouncedUiServerPort.isNotBlank() &&
+                    viewModel.debouncedUiSharedSecret.isNotBlank() // Add if secret is mandatory
 
             if (viewModel.isProxyRunning) {
                 Button(
@@ -114,12 +131,11 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
-
             } else {
                 Button(
                     onClick = { viewModel.startProxyService() },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = viewModel.errorMessage == null && viewModel.uiServerDomain.isNotBlank() && viewModel.uiServerPort.isNotBlank()
+                    enabled = enableStartButton // Use the condition based on debounced values
                 ) {
                     Text("Start Proxy Service")
                 }
@@ -131,6 +147,8 @@ fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
     }
 }
 
+
+/**
 @SuppressLint("ViewModelConstructorInComposable")
 @Preview(showBackground = true)
 @Composable
@@ -190,3 +208,4 @@ class PreviewTroadStore(private val context: Context) : TroadStore(context) {
     // ...
 }
 
+**/

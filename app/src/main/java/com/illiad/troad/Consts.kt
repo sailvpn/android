@@ -26,5 +26,4 @@ object Consts {
     const val EXTRA_STATUS_MESSAGE = "com.illiad.troad.STATUS_MESSAGE"
     const val EXTRA_IS_CONNECTED = "com.illiad.troad.IS_CONNECTED"
 
-
 }

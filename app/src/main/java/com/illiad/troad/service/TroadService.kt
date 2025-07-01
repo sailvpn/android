@@ -45,7 +45,9 @@ import io.netty.handler.logging.LoggingHandler
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import java.util.concurrent.TimeUnit.MILLISECONDS
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeUnit.SECONDS
+
 
 class TroadService : VpnService() {
 
@@ -73,8 +75,7 @@ class TroadService : VpnService() {
 
                 // Prepare and establish the VPN connection
                 if (prepareAndEstablishVpn()) {
-                    // isRunning must be set before starting the loop
-                    isRunning = true
+                    // isRunning is set in InputHandler channelAdded just before starting the loop
                     runVpnPacketLoop()
                     startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
                     Log.d(TAG, "VPN connection established and foreground service started.")
@@ -212,7 +213,7 @@ class TroadService : VpnService() {
             isRunning = false
             throw RuntimeException(e)
         } finally {
-
+            broadcastVpnStatus("VPN starting", isRunning)
         }
 
     }
@@ -231,7 +232,7 @@ class TroadService : VpnService() {
         vpnReaderExecutor?.shutdown()
         try {
             vpnReaderExecutor?.awaitTermination(
-                1000, MILLISECONDS
+                5, SECONDS
             ) // Wait for the thread to die for a short period
             if (vpnReaderExecutor?.isTerminated != true) {
                 Log.w(TAG, "VPN packet thread did not terminate in time.")
@@ -273,7 +274,7 @@ class TroadService : VpnService() {
 
         stopSelf() // Stop the service itself
         Log.i(TAG, "VPN Service stopped.")
-        broadcastVpnStatus("Disconnected", false) // Notify UI
+        broadcastVpnStatus("Disconnected", isRunning) // Notify UI
     }
 
     /**
@@ -288,7 +289,6 @@ class TroadService : VpnService() {
             if (vpnInterface == null) stopSelf()
             return
         }
-        broadcastVpnStatus("Disconnecting...", false)
         stopVpnService(true) // True to remove notification
     }
 

@@ -27,7 +27,6 @@ object Utils {
 
     @Volatile
     var vpnReaderExecutor: ExecutorService? = null
-    val isReaderTaskSubmitted = AtomicBoolean(false)
 
     // Lock and Condition for signaling the reader thread
     val readerLock = ReentrantLock()
