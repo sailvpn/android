@@ -16,18 +16,11 @@ import com.illiad.troad.Consts.EXTRA_SHARED_SECRET
 import com.illiad.troad.service.TroadService
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-
-import kotlinx.coroutines.flow.asStateFlow
 
 @OptIn(FlowPreview::class)
 class ProxySettingsViewModel(
@@ -193,7 +186,10 @@ class ProxySettingsViewModel(
     }
 
     fun updateVpnStatus(isConnected: Boolean, message: String?) {
-        isProxyRunning = isConnected
-        // Update any other relevant UI state based on VPN status
+        // reduce the fliping of display
+        if (isProxyRunning != isConnected) {
+            isProxyRunning = isConnected
+            // Update any other relevant UI state based on VPN status
+        }
     }
 }
