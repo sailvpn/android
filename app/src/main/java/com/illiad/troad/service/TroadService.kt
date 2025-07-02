@@ -42,14 +42,23 @@ import com.illiad.troad.service.handler.ip.InputHandler
 import io.netty.channel.embedded.EmbeddedChannel
 import io.netty.handler.logging.LogLevel
 import io.netty.handler.logging.LoggingHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeUnit.SECONDS
 
 
 class TroadService : VpnService() {
+
+    private val serviceJob =
+        SupervisorJob() // Use SupervisorJob so one task failing doesn't cancel the scope
+
+    // Create a scope that uses Dispatchers.IO for background tasks by default
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     override fun onCreate() {
         super.onCreate()
@@ -72,27 +81,31 @@ class TroadService : VpnService() {
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
                 Log.d(TAG, "Connecting VPN to $serverDomain:$serverPort")
-
-                // Prepare and establish the VPN connection
-                if (prepareAndEstablishVpn()) {
-                    // isRunning is set in InputHandler channelAdded just before starting the loop
-                    runVpnPacketLoop()
-                    startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
-                    Log.d(TAG, "VPN connection established and foreground service started.")
-                } else {
-                    Log.e(TAG, "Failed to establish VPN connection.")
-                    stopVpnService() // Clean up and stop
-                }
+                serviceScope.launch { startVpn() }
             }
 
             ACTION_DISCONNECT -> {
                 Log.d(TAG, "Disconnecting VPN.")
-                disconnectVpn()
+                serviceScope.launch { disconnectVpn() }
             }
         }
         // If the service is killed, restart it with the last intent (if connect was successful)
         // Or START_NOT_STICKY if you don't want it to auto-restart.
         return if (isRunning) START_STICKY else START_NOT_STICKY
+    }
+
+
+    private fun startVpn() {
+        // Prepare and establish the VPN connection
+        if (prepareAndEstablishVpn()) {
+            // isRunning is set in InputHandler channelAdded just before starting the loop
+            runVpnPacketLoop()
+            startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
+            Log.d(TAG, "VPN connection established and foreground service started.")
+        } else {
+            Log.e(TAG, "Failed to establish VPN connection.")
+            stopVpnService() // Clean up and stop
+        }
     }
 
     private fun createNotificationChannel() { // Definition of your method
@@ -158,7 +171,7 @@ class TroadService : VpnService() {
             val builder = Builder()
             // Configure IP address, routes, DNS servers, MTU, etc.
             // These are examples and MUST be configured according to your VPN server setup.
-            builder.setSession(Rss.getString(R.string.app_name)) // Display name for the VPN session
+            builder.setSession(getString(R.string.app_name)) // Display name for the VPN session
                 .addAddress(TUN_IP, 24)      // VPN client's virtual IP
                 .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
                 .addDnsServer(DNS1).addDnsServer(DNS2)
