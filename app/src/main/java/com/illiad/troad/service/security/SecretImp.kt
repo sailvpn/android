@@ -1,7 +1,7 @@
 package com.illiad.troad.service.security
 
 import com.illiad.troad.R
-import com.illiad.troad.service.Rss
+import com.illiad.troad.service.Utils.getString
 import com.illiad.troad.service.Utils.sharedSecret
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
@@ -14,19 +14,19 @@ object SecretImp : Secret {
     override var secret: ByteArray? = null
         get() {
             val digest =
-                MessageDigest.getInstance(Cryptos.valueOf(Rss.getString(R.string.crypto)).value!!)
+                MessageDigest.getInstance(Cryptos.valueOf(getString(R.string.crypto)).value!!)
             return digest.digest(sharedSecret.encodeToByteArray())
         }
 
     override var cryptoType: Cryptos? = null
-        get() = Cryptos.valueOf(Rss.getString(R.string.crypto))
+        get() = Cryptos.valueOf(getString(R.string.crypto))
 
     override var cryptoTypeByte: Byte? = null
-        get() = CryptoByte.toByte(Cryptos.valueOf(Rss.getString(R.string.crypto)))
+        get() = CryptoByte.toByte(Cryptos.valueOf(getString(R.string.crypto)))
 
     override var cryptoLength: Short? = null
         get() = CryptoByte.byteLength(
-            Cryptos.valueOf(Rss.getString(R.string.crypto))
+            Cryptos.valueOf(getString(R.string.crypto))
         )
 
     override fun offset(): ByteArray {
