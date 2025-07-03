@@ -81,7 +81,20 @@ class TroadService : VpnService() {
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
                 Log.d(TAG, "Connecting VPN to $serverDomain:$serverPort")
-                serviceScope.launch { startVpn() }
+                // Prepare and establish the VPN connection
+                if (prepareAndEstablishVpn()) {
+                    serviceScope.launch {
+                        // isRunning is set in InputHandler channelAdded just before starting the loop
+                        runVpnPacketLoop()
+                    }
+                    startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
+                    Log.d(TAG, "VPN connection established and foreground service started.")
+                } else {
+                    Log.e(TAG, "Failed to establish VPN connection.")
+                    serviceScope.launch {
+                        stopVpnService() // Clean up and stop
+                    }
+                }
             }
 
             ACTION_DISCONNECT -> {
@@ -92,20 +105,6 @@ class TroadService : VpnService() {
         // If the service is killed, restart it with the last intent (if connect was successful)
         // Or START_NOT_STICKY if you don't want it to auto-restart.
         return if (isRunning) START_STICKY else START_NOT_STICKY
-    }
-
-
-    private fun startVpn() {
-        // Prepare and establish the VPN connection
-        if (prepareAndEstablishVpn()) {
-            // isRunning is set in InputHandler channelAdded just before starting the loop
-            runVpnPacketLoop()
-            startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
-            Log.d(TAG, "VPN connection established and foreground service started.")
-        } else {
-            Log.e(TAG, "Failed to establish VPN connection.")
-            stopVpnService() // Clean up and stop
-        }
     }
 
     private fun createNotificationChannel() { // Definition of your method
@@ -151,7 +150,7 @@ class TroadService : VpnService() {
             .setContentIntent(pendingOpenAppIntent) // Action on tap
             .setOngoing(true) // Makes the notification non-dismissable by swiping
             .addAction(
-                R.drawable.slash, // Replace with your disconnect icon (optional)
+                R.drawable.cross, // Replace with your disconnect icon (optional)
                 "Disconnect", pendingDisconnectIntent
             )
         // .setPublicVersion(publicNotification) // For lock screen visibility control (optional)
@@ -174,16 +173,21 @@ class TroadService : VpnService() {
             builder.setSession(getString(R.string.app_name)) // Display name for the VPN session
                 .addAddress(TUN_IP, 24)      // VPN client's virtual IP
                 .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
-                .addDnsServer(DNS1).addDnsServer(DNS2)
-                .setMtu(MTU)                      // Set MTU (adjust as needed)
+                .addDnsServer(DNS1).addDnsServer(DNS2) // Set MTU (adjust as needed)
                 //  .addAllowedApplication("com.example.anotherapp") // For per-app VPN (optional)
                 .addDisallowedApplication(packageName)           // Exclude this app (optional)
-
+                .setMtu(MTU)
             // Optional: Configure an intent to open your app's settings if needed before connection
             // val configureIntent = Intent(this, YourVpnSettingsActivity::class.java)
             // builder.setConfigureIntent(PendingIntent.getActivity(this, 0, configureIntent, PendingIntent.FLAG_IMMUTABLE))
 
-            vpnInterface = builder.establish() // This can return null if user denies permission
+            try {
+                vpnInterface = builder.establish() // This can return null if user denies permission
+            } catch (e: Exception) {
+                Log.e(TAG, "Error establishing VPN interface", e)
+                // Notify UI about the error if needed
+            }
+
             if (vpnInterface == null) {
                 Log.e(TAG, "VPN establish returned null. User might have denied permission.")
                 sendBroadcast(
