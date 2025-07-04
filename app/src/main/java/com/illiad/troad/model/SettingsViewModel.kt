@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class)
-class ProxySettingsViewModel(
+class SettingsViewModel(
     private val app: Application, private val tStore: TroadStore
 ) : AndroidViewModel(app) {
 

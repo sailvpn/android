@@ -19,14 +19,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
-import com.illiad.troad.model.ProxySettingsViewModel
-import com.illiad.troad.model.ProxySettingsViewModelFactory
+import com.illiad.troad.model.SettingsViewModel
+import com.illiad.troad.model.SettingsViewModelFactory
 import com.illiad.troad.view.ProxySettingsScreen
 
 class MainActivity : ComponentActivity() {
 
-    private val proxySettingsViewModel: ProxySettingsViewModel by viewModels {
-        ProxySettingsViewModelFactory(application)
+    private val settingsViewModel: SettingsViewModel by viewModels {
+        SettingsViewModelFactory(application)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
-                    ProxySettingsScreen(proxySettingsViewModel)
+                    ProxySettingsScreen(settingsViewModel)
                 }
             }
         }
@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 val message = intent.getStringExtra(Consts.EXTRA_STATUS_MESSAGE)
                 val isConnected = intent.getBooleanExtra(Consts.EXTRA_IS_CONNECTED, false)
                 // Update your UI here based on the message and isConnected state
-                proxySettingsViewModel.updateVpnStatus(isConnected, message)
+                settingsViewModel.updateVpnStatus(isConnected, message)
                 Log.d("MyActivity", "VPN Status Received: $message, Connected: $isConnected")
                 // e.g., myStatusTextView.text = message
                 // e.g., myConnectButton.isEnabled = !isConnected

@@ -1,8 +1,5 @@
 package com.illiad.troad.view
 
-import android.annotation.SuppressLint
-import android.app.Application
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
@@ -14,21 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.illiad.troad.model.ProxySettingsViewModel
-import com.illiad.troad.model.TroadStore
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import com.illiad.troad.model.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProxySettingsScreen(viewModel: ProxySettingsViewModel) {
+fun ProxySettingsScreen(viewModel: SettingsViewModel) {
     var passwordVisible by remember { mutableStateOf(false) }
 
     // Collect the raw input values for the TextFields
