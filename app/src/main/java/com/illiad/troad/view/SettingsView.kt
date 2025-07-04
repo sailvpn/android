@@ -1,8 +1,11 @@
 package com.illiad.troad.view
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
@@ -11,10 +14,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.illiad.troad.R
 import com.illiad.troad.model.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,7 +38,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
     // val isProxyCurrentlyRunning = viewModel.isProxyRunning
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Proxy Settings") }) }
+        // topBar = { TopAppBar(title = { Text("Proxy Settings") }) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -42,6 +48,19 @@ fun SettingsView(viewModel: SettingsViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Image(
+                painter = painterResource(id = R.drawable.troy), // Or R.mipmap.ic_launcher_round if using adaptive icon's round version
+                contentDescription = "App Logo",
+                modifier = Modifier
+                    .size(50.dp) // Adjust size as needed
+                    .clip(CircleShape) // Clip the image to a circle
+                    .border( // Add a border
+                        width = 2.dp, // Border width
+                        color = MaterialTheme.colorScheme.primary, // Border color (adjust as needed)
+                        shape = CircleShape // Ensure border shape matches clip shape
+                    )
+            )
+
             Text(
                 text = "Configure Remote Proxy Server",
                 style = MaterialTheme.typography.headlineSmall
@@ -54,11 +73,12 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 // isError is based on the viewModel's errorMessage state
-                isError = viewModel.errorMessage?.contains("Domain", ignoreCase = true) == true ||
-                        viewModel.errorMessage?.contains(
-                            "empty",
-                            ignoreCase = true
-                        ) == true && viewModel.debouncedUiServerDomain.isBlank()
+                isError = viewModel.errorMessage?.contains(
+                    "Domain",
+                    ignoreCase = true
+                ) == true || viewModel.errorMessage?.contains(
+                    "empty", ignoreCase = true
+                ) == true && viewModel.debouncedUiServerDomain.isBlank()
 
             )
 
@@ -69,8 +89,13 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                isError = viewModel.errorMessage?.contains("Port", ignoreCase = true) == true ||
-                        viewModel.errorMessage?.contains("Invalid port", ignoreCase = true) == true
+                isError = viewModel.errorMessage?.contains(
+                    "Port",
+                    ignoreCase = true
+                ) == true || viewModel.errorMessage?.contains(
+                    "Invalid port",
+                    ignoreCase = true
+                ) == true
             )
 
             OutlinedTextField(
@@ -104,10 +129,8 @@ fun SettingsView(viewModel: SettingsViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Enable button based on absence of error and presence of necessary (debounced) inputs
-            val enableStartButton = viewModel.errorMessage == null &&
-                    viewModel.debouncedUiServerDomain.isNotBlank() &&
-                    viewModel.debouncedUiServerPort.isNotBlank() &&
-                    viewModel.debouncedUiSharedSecret.isNotBlank() // Add if secret is mandatory
+            val enableStartButton =
+                viewModel.errorMessage == null && viewModel.debouncedUiServerDomain.isNotBlank() && viewModel.debouncedUiServerPort.isNotBlank() && viewModel.debouncedUiSharedSecret.isNotBlank() // Add if secret is mandatory
 
             if (viewModel.isProxyRunning) {
                 Button(
