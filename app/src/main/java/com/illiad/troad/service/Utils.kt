@@ -35,8 +35,6 @@ object Utils {
     @Volatile
     var workAvailable = false // Guard for spurious wakeups and initial start
 
-    val MTU = 65575
-
     var serverDomain: String = "127.0.0.1"
     var serverPort: Int = 2080
     var sharedSecret: String = "sharedSecret"

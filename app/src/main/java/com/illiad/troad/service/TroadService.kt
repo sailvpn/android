@@ -20,6 +20,7 @@ import com.illiad.troad.Consts.EXTRA_SERVER_ADDRESS
 import com.illiad.troad.Consts.EXTRA_SERVER_PORT
 import com.illiad.troad.Consts.EXTRA_SHARED_SECRET
 import com.illiad.troad.Consts.EXTRA_STATUS_MESSAGE
+import com.illiad.troad.Consts.MTU
 import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_ID
 import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_NAME
 import com.illiad.troad.Consts.NOTIFICATION_ID
@@ -35,7 +36,6 @@ import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.Utils.serverDomain
 import com.illiad.troad.service.Utils.serverPort
 import com.illiad.troad.service.Utils.sharedSecret
-import com.illiad.troad.service.Utils.MTU
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
 import com.illiad.troad.service.handler.ip.InputHandler

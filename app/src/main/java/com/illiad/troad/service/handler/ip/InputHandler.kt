@@ -1,5 +1,6 @@
 package com.illiad.troad.service.handler.ip
 
+import com.illiad.troad.Consts.MTU
 import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.Utils.vpnReaderExecutor
@@ -7,7 +8,6 @@ import com.illiad.troad.service.Utils.vpnReadFileChannel
 import com.illiad.troad.service.Utils.readCondition
 import com.illiad.troad.service.Utils.readerLock
 import com.illiad.troad.service.Utils.workAvailable
-import com.illiad.troad.service.Utils.MTU
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext

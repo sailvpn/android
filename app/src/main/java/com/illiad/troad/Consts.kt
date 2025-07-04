@@ -6,6 +6,8 @@ object Consts {
     const val TUN_IP = "10.8.0.2"
     const val DNS1 = "8.8.8.8"
     const val DNS2 = "8.8.4.4"
+    const val MTU = 1400 // Android VpnService.Builder.establish() will crash on a too high number
+
     const val ACTION_CONNECT = "com.illiad.troad.CONNECT"
     const val ACTION_DISCONNECT = "com.illiad.troad.DISCONNECT"
 
