@@ -80,7 +80,6 @@ class TroadService : VpnService() {
                 serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 0)
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
-                Log.d(TAG, "Connecting VPN to $serverDomain:$serverPort")
                 // Prepare and establish the VPN connection
                 if (prepareAndEstablishVpn()) {
                     serviceScope.launch {
@@ -166,6 +165,7 @@ class TroadService : VpnService() {
     private fun prepareAndEstablishVpn(): Boolean {
 
         try {
+            Log.d(TAG, "Preparing VPN interface at: " + "${TUN_IP}")
             // --- This is a crucial part where you configure the VPN ---
             val builder = Builder()
             // Configure IP address, routes, DNS servers, MTU, etc.
