@@ -21,7 +21,7 @@ import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
 import com.illiad.troad.model.SettingsViewModel
 import com.illiad.troad.model.SettingsViewModelFactory
-import com.illiad.troad.view.ProxySettingsScreen
+import com.illiad.troad.view.SettingsView
 
 class MainActivity : ComponentActivity() {
 
@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
-                    ProxySettingsScreen(settingsViewModel)
+                    SettingsView(settingsViewModel)
                 }
             }
         }

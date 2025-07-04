@@ -19,7 +19,7 @@ import com.illiad.troad.model.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProxySettingsScreen(viewModel: SettingsViewModel) {
+fun SettingsView(viewModel: SettingsViewModel) {
     var passwordVisible by remember { mutableStateOf(false) }
 
     // Collect the raw input values for the TextFields
