@@ -3,7 +3,6 @@ package com.illiad.troad.service.codec.ip
 import com.illiad.troad.service.event.MoreBytes
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil
-import io.netty.channel.ChannelHandler.Sharable
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.ByteToMessageDecoder
 import org.pcap4j.packet.IpV4Packet
@@ -13,7 +12,6 @@ import org.pcap4j.packet.UnknownPacket
 import org.pcap4j.packet.factory.PacketFactories
 import org.pcap4j.packet.namednumber.DataLinkType
 
-@Sharable
 object PacketDecoder : ByteToMessageDecoder() {
 
     private const val MIN_IPV4_HEADER_SIZE = 20
@@ -48,7 +46,6 @@ object PacketDecoder : ByteToMessageDecoder() {
                         // Parsing failed or not enough data for a full IPv4 packet, stop further processing
                         // as we can't reliably determine the next packet's start.
                         println("Failed to parse IPv4 packet or insufficient data, stopping.")
-                        break
                     }
                 }
 
@@ -58,7 +55,6 @@ object PacketDecoder : ByteToMessageDecoder() {
                         out!!.add(packet)
                     } else {
                         println("Failed to parse IPv6 packet or insufficient data, stopping.")
-                        break
                     }
                 }
 
