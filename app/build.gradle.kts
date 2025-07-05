@@ -63,7 +63,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1") // For ViewModel
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // https://mvnrepository.com/artifact/io.netty/netty-all
-    implementation("io.netty:netty-all:4.1.118.Final")
+    implementation("io.netty:netty-all:4.2.2.Final")
     // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-core
     implementation("org.pcap4j:pcap4j-core:2.0.0-alpha.6")
     // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-packetfactory-static
