@@ -3,21 +3,25 @@ package com.illiad.troad.service.channel;
 import io.netty.channel.*;
 
 import java.io.File;
+import java.io.FileDescriptor;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.net.SocketAddress;
-import java.nio.channels.FileChannel;
+import java.nio.channels.AsynchronousFileChannel;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 
 public class FildesChannel extends AbstractChannel { // Extends AbstractChannel
 
     private static final ChannelMetadata METADATA = new ChannelMetadata(false); // Example metadata
     private final FildesChannelConfig config = new FildesChannelConfig(this); // Custom config
     private final File file;
-    private FileChannel fileChannel;
+    private AsynchronousFileChannel afc;
 
     public FildesChannel(Channel parent, File file) {
         super(parent);
         this.file = file;
+
     }
 
     @Override
@@ -32,7 +36,7 @@ public class FildesChannel extends AbstractChannel { // Extends AbstractChannel
 
     @Override
     public boolean isOpen() {
-        return fileChannel != null && fileChannel.isOpen();
+        return afc != null && afc.isOpen();
     }
 
     @Override
@@ -74,11 +78,11 @@ public class FildesChannel extends AbstractChannel { // Extends AbstractChannel
         // This method is called when the Channel's disconnect() method is invoked.
         // Here, you should perform actions to "disconnect" your file channel,
         // which typically means releasing resources associated with the file.
-        System.out.println("CustomFileChannel: doDisconnect() called.");
-        if (fileChannel != null) {
+        System.out.println("FildesChannel: doDisconnect() called.");
+        if (afc != null) {
             try {
-                fileChannel.close(); // Close the file channel
-                fileChannel = null;
+                afc.close(); // Close the file channel
+                afc = null;
             } catch (IOException e) {
                 // Handle potential IOException during close
                 throw new ChannelException("Failed to close file channel", e);
@@ -93,10 +97,10 @@ public class FildesChannel extends AbstractChannel { // Extends AbstractChannel
         // This method is called when the Channel's close() method is invoked.
         // This method should also release resources and mark the channel as closed.
         System.out.println("CustomFileChannel: doClose() called.");
-        if (fileChannel != null) {
+        if (afc != null) {
             try {
-                fileChannel.close();
-                fileChannel = null;
+                afc.close();
+                afc = null;
             } catch (IOException e) {
                 throw new ChannelException("Failed to close file channel", e);
             }
@@ -137,9 +141,9 @@ public class FildesChannel extends AbstractChannel { // Extends AbstractChannel
         @Override
         public void connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {
             // Implement connection logic (if needed)
-            // In this case, connecting might involve opening the FileChannel
+            // In this case, connecting might involve opening the AsynchronousFileChannel
             try {
-                fileChannel = new RandomAccessFile(file, "r").getChannel();
+                afc = AsynchronousFileChannel.open(file.toPath(), StandardOpenOption.READ, StandardOpenOption.WRITE);
                 // Signal success
                 promise.setSuccess();
             } catch (IOException e) {
@@ -150,6 +154,12 @@ public class FildesChannel extends AbstractChannel { // Extends AbstractChannel
 
         // Implement other Unsafe methods for file channel interactions
         // ...
+    }
+
+    private static Path fd2Path(FileDescriptor fd) {
+
+        int fdNum = fd.;
+        return Paths.get("/proc/self/fd/");
     }
 
     // Custom ChannelConfig for your file channel
