@@ -1,5 +1,6 @@
 package com.illiad.troad.service.channel // Your package
 
+import FildesAddress
 import io.netty.channel.*
 import io.netty.buffer.ByteBuf
 import io.netty.util.internal.logging.InternalLoggerFactory
@@ -197,64 +198,94 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
     override fun doWrite(buffer: ChannelOutboundBuffer) {
         if (outputShutdown || !isActive) {
             // Drain the buffer and fail promises if not active or output shutdown
+            var cause: IOException? = null // To avoid creating multiple exception objects
             while (true) {
-                val msg = buffer.current() ?: break
-                val promise = buffer.currentPromise()
-                buffer.remove(IOException("Channel not active or output shutdown"))
-                promise?.tryFailure(IOException("Channel not active or output shutdown"))
+                // When removing with an exception, the promise is automatically failed with that cause.
+                // buffer.current() is not how you get the message to remove with cause.
+                // You remove the head and the promise is handled.
+                if (!buffer.remove(IOException("Channel not active or output shutdown"))) {
+                    break // Buffer is empty
+                }
+                // The promise associated with the removed message is failed by buffer.remove(Throwable)
             }
             return
         }
 
         val nioChannel = nioOutputStreamChannel ?: run {
-            // Drain buffer and fail if not writable
-            // ... (similar to above)
+            // Drain buffer and fail if not writable (e.g., output stream was null or closed)
+            while (true) {
+                if (!buffer.remove(IOException("Output stream channel is not available"))) {
+                    break
+                }
+            }
             return
         }
 
         while (true) {
+            // Get the current message at the head of the buffer without removing it yet.
             val msg = buffer.current()
             if (msg == null) {
-                // All messages written
+                // All messages written or buffer is empty for now.
+                // The flush operation from pipeline signals when to stop trying to pull from buffer.
                 break
             }
 
             if (msg is ByteBuf) {
                 val buf = msg
                 val readableBytes = buf.readableBytes()
+
                 if (readableBytes == 0) {
-                    buffer.remove() // Remove empty buffer
+                    // Remove the empty buffer and succeed its promise.
+                    // The promise is retrieved internally by buffer.remove() and succeeded.
+                    buffer.remove()
                     continue
                 }
 
                 try {
-                    // Write from ByteBuf's underlying ByteBuffer(s) to nioChannel
                     var writtenBytes = 0
                     while (writtenBytes < readableBytes) {
                         // writeBytes returns bytes *read from source*, i.e., written to dest
+                        // It advances the readerIndex of the source ByteBuf (buf)
                         val localWritten = buf.readBytes(nioChannel, readableBytes - writtenBytes)
-                        if (localWritten <= 0) break // Should not happen if readableBytes > 0
+
+                        if (localWritten <= 0) { // Should only happen if readableBytes was 0 initially or non-blocking IO has 0 to write
+                            if (buf.readableBytes() == readableBytes) { // Nothing was written at all
+                                // If non-blocking and wrote 0, break to allow event loop to do other things.
+                                // Netty's selector will notify when writable again for NioSocketChannel.
+                                // For FileChannel, writes are typically blocking unless configured otherwise,
+                                // or if it's an AsynchronousFileChannel (which we are not directly using here in doWrite).
+                                // If nioChannel is a blocking FileChannel, localWritten > 0 or exception.
+                                // If it *could* be non-blocking and return 0, we'd break here.
+                                logger.warn("No bytes written for ByteBuf, assuming non-blocking and needs retry or buffer full downstream.")
+                            }
+                            break // Break inner loop, will re-evaluate outer for partial write
+                        }
                         writtenBytes += localWritten
+                        // Progress is implicitly handled by ByteBuf.readBytes advancing readerIndex
                     }
 
-                    if (writtenBytes == readableBytes) {
-                        buffer.remove() // Successfully wrote the entire buffer
+                    if (buf.readableBytes() == 0) { // Entire ByteBuf was written
+                        // Remove the message from the buffer. This also retrieves and SUCCEEDS its associated promise.
+                        buffer.remove()
                     } else {
-                        // Partial write, break and try again on next flush/write op
-                        // Netty's ChannelOutboundBuffer handles this: it won't remove
-                        // until fully written, or doWrite signals completion.
-                        // Or, you need to call buffer.progress(writtenBytes) if applicable.
-                        // For simplicity here, assume full writes or rely on buffer's internal handling.
-                        break
+                        // Partial write: The message (ByteBuf) remains at the head of the ChannelOutboundBuffer.
+                        // Its readerIndex is advanced by the amount written.
+                        // Netty will call flush() again later, which will trigger doWrite() again,
+                        // and we'll attempt to write the remaining bytes of this ByteBuf.
+                        // No need to call buffer.progress() as the ByteBuf's readerIndex tracks progress.
+                        break // Exit the while(true) loop; wait for next flush()
                     }
+
                 } catch (e: IOException) {
-                    buffer.remove(e) // Remove with error
+                    // On exception, remove the current message and FAIL its promise with the caught exception.
+                    buffer.remove(e)
                     pipeline().fireExceptionCaught(e) // Also notify pipeline
                     close(voidPromise()) // Close on write error
                     return
                 }
             } else {
                 // Unsupported message type
+                // Remove the message and FAIL its promise.
                 buffer.remove(UnsupportedOperationException("Unsupported message type: ${msg.javaClass.name}"))
             }
         }
