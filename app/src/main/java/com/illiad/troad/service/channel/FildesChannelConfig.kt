@@ -1,12 +1,9 @@
 package com.illiad.troad.service.channel
 
-import io.netty.channel.ChannelConfig
 import io.netty.channel.DefaultChannelConfig
-import io.netty.channel.RecvByteBufAllocator
 import io.netty.buffer.ByteBufAllocator
-import io.netty.channel.MessageSizeEstimator
-import io.netty.channel.WriteBufferWaterMark
 import io.netty.channel.AdaptiveRecvByteBufAllocator
+import io.netty.channel.ChannelOption
 
 class FildesChannelConfig(channel: FildesChannel) : DefaultChannelConfig(channel) {
 
@@ -24,7 +21,7 @@ class FildesChannelConfig(channel: FildesChannel) : DefaultChannelConfig(channel
     // enum class ReadMode { SEQUENTIAL, RANDOM_ACCESS }
 
     override fun getOptions(): Map<ChannelOption<*>, Any> {
-        return super.getOptions() // Add your custom options if any
+        return super.getOptions().toMutableMap() // Add your custom options if any
     }
 
     override fun <T : Any?> getOption(option: ChannelOption<T>?): T? {
