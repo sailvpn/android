@@ -1,7 +1,14 @@
 package com.illiad.troad.service.channel // Your package
 
 import FildesAddress
-import io.netty.channel.*
+import io.netty.channel.AbstractChannel
+import io.netty.channel.Channel
+import io.netty.channel.ChannelConfig
+import io.netty.channel.ChannelFuture
+import io.netty.channel.ChannelMetadata
+import io.netty.channel.ChannelOutboundBuffer
+import io.netty.channel.ChannelPromise
+import io.netty.channel.EventLoop
 import io.netty.util.internal.logging.InternalLoggerFactory
 import java.io.FileDescriptor
 import java.io.FileInputStream
@@ -20,6 +27,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
 
     @Volatile
     private var inputShutdown = false // Flag to indicate if input is shut down
+
     @Volatile
     private var outputShutdown = false // Flag for output shutdown (symmetric to input)
 
@@ -50,9 +58,11 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
     override fun newUnsafe(): AbstractUnsafe = FildesChannelUnsafe() // Defined below or separately
     override fun config(): ChannelConfig = config
     override fun metadata(): ChannelMetadata = ChannelMetadata(false)
-    override fun isOpen(): Boolean = fd.valid() && (nioInputStreamChannel?.isOpen == true || nioOutputStreamChannel?.isOpen == true)
-    override fun isActive(): Boolean = isOpen && channelActive
-    override fun isCompatible(loop: EventLoop?): Boolean = true
+    override fun isOpen() =
+        fd.valid() && (nioInputStreamChannel?.isOpen == true || nioOutputStreamChannel?.isOpen == true)
+
+    override fun isActive() = isOpen && channelActive
+    override fun isCompatible(loop: EventLoop?) = true
     override fun localAddress0(): SocketAddress = fildesAddress
     override fun remoteAddress0(): SocketAddress? = null // Typically null for FD-based channel unless connecting to another FD
     override fun doBind(localAddress: SocketAddress?) { /* ... see previous examples ... */
@@ -69,7 +79,11 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         // and before connect(), you might set channelActive = true here and fireChannelActive.
         // However, typically for client-style channels, active state is after connect().
     }
-    override fun doDisconnect() { doClose() }
+
+    override fun doDisconnect() {
+        doClose()
+    }
+
     override fun doClose() {
         logger.debug("{} closing", this)
         channelActive = false
@@ -101,7 +115,10 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
             if (!inputShutdown) { // Avoid redundant shutdown if already called
                 shutdownInput().addListener { future ->
                     if (!future.isSuccess) {
-                        logger.warn("Error trying to shutdown input after finding null nioChannel during read", future.cause())
+                        logger.warn(
+                            "Error trying to shutdown input after finding null nioChannel during read",
+                            future.cause()
+                        )
                     }
                 }
             }
@@ -110,11 +127,11 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         val allocHandle = unsafe().recvBufAllocHandle()
         allocHandle.reset(config())
 
-        var continueReading = false
+        var continueReading: Boolean
         do {
             val byteBuf = allocHandle.allocate(config().allocator)
-            var bytesRead = 0
-            var readSuccess = false
+            var bytesRead: Int
+            var readSuccess: Boolean
             try {
                 bytesRead = byteBuf.writeBytes(nioChannel, allocHandle.attemptedBytesRead())
                 if (bytesRead > 0) {
@@ -141,7 +158,10 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
                 // For a read error, often the input or whole channel is compromised.
                 shutdownInput().addListener { future ->
                     if (!future.isSuccess) {
-                        logger.warn("Error during shutdownInput after read exception", future.cause())
+                        logger.warn(
+                            "Error during shutdownInput after read exception",
+                            future.cause()
+                        )
                     }
                     // Optionally close the whole channel if input shutdown fails or policy dictates
                     // close(voidPromise())
@@ -155,7 +175,8 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         pipeline().fireChannelReadComplete()
     }
 
-    override fun doWrite(buffer: ChannelOutboundBuffer) { /* ... see previous corrected example ... */ }
+    override fun doWrite(buffer: ChannelOutboundBuffer) { /* ... see previous corrected example ... */
+    }
 
 
     // --- Input Shutdown Implementation ---
@@ -168,7 +189,8 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
      * @return a [ChannelFuture] that will be notified when the input shutdown is complete.
      */
     fun shutdownInput(): ChannelFuture {
-        val promise = newPromise() // Creates a promise associated with this channel and its event loop
+        val promise =
+            newPromise() // Creates a promise associated with this channel and its event loop
         if (eventLoop().inEventLoop()) {
             shutdownInput0(promise)
         } else {
@@ -286,7 +308,11 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
     // --- Unsafe implementation (Inner class) ---
     private inner class FildesChannelUnsafe : AbstractUnsafe() {
         // Must be connect-oriented if it has an "active" state post-connection
-        override fun connect(remoteAddress: SocketAddress?, localAddress: SocketAddress?, promise: ChannelPromise) {
+        override fun connect(
+            remoteAddress: SocketAddress?,
+            localAddress: SocketAddress?,
+            promise: ChannelPromise
+        ) {
             if (!promise.setUncancellable()) {
                 close(voidPromise())
                 return
@@ -361,6 +387,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
 object ChannelInputShutdownEvent {
     val INSTANCE = this
 }
+
 object ChannelOutputShutdownEvent {
     val INSTANCE = this
 }
