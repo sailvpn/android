@@ -1,6 +1,5 @@
 package com.illiad.troad.service.codec.ip
 
-import com.illiad.troad.service.event.MoreBytes
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil
 import io.netty.channel.ChannelHandlerContext
@@ -69,7 +68,7 @@ object PacketDecoder : ByteToMessageDecoder() {
             }
         }
         byteBuf.release()
-        ctx!!.fireUserEventTriggered(MoreBytes())
+        ctx!!.fireChannelRead(out)
     }
 
     private fun parseIpV4Packet(byteBuf: ByteBuf): IpV4Packet? {
