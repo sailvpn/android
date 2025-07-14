@@ -12,29 +12,6 @@ import java.util.concurrent.locks.ReentrantLock
 
 object Utils {
 
-    // varibles for InputHandler
-    @Volatile
-    var vpnInterface: ParcelFileDescriptor? = null
-
-    @Volatile
-    lateinit var vpnReadFileChannel: FileChannel
-
-    @Volatile
-    lateinit var vpnWriteFileChannel: FileChannel
-
-    @Volatile
-    var isRunning: Boolean = false
-
-    @Volatile
-    var vpnReaderExecutor: ExecutorService? = null
-
-    // Lock and Condition for signaling the reader thread
-    val readerLock = ReentrantLock()
-    val readCondition: Condition = readerLock.newCondition()
-
-    @Volatile
-    var workAvailable = false // Guard for spurious wakeups and initial start
-
     var serverDomain: String = "127.0.0.1"
     var serverPort: Int = 2080
     var sharedSecret: String = "sharedSecret"

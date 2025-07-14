@@ -1,11 +1,13 @@
 package com.illiad.troad.service
 
+import FildesAddress
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.illiad.troad.Consts.ACTION_CONNECT
@@ -28,37 +30,23 @@ import com.illiad.troad.Consts.TAG
 import com.illiad.troad.Consts.TUN_IP
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
-import com.illiad.troad.service.Utils.isRunning
 import com.illiad.troad.service.Utils.serverDomain
 import com.illiad.troad.service.Utils.serverPort
 import com.illiad.troad.service.Utils.sharedSecret
-import com.illiad.troad.service.Utils.vpnInterface
-import com.illiad.troad.service.Utils.vpnReadFileChannel
-import com.illiad.troad.service.Utils.vpnReaderExecutor
-import com.illiad.troad.service.Utils.vpnWriteFileChannel
+import com.illiad.troad.service.channel.FildesChannel
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
-import com.illiad.troad.service.handler.ip.InputHandler
-import io.netty.channel.embedded.EmbeddedChannel
-import io.netty.handler.logging.LogLevel
-import io.netty.handler.logging.LoggingHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.IOException
-import java.util.concurrent.TimeUnit.SECONDS
-
+import io.netty.bootstrap.Bootstrap
+import io.netty.channel.ChannelFactory
+import io.netty.channel.ChannelInitializer
+import io.netty.channel.MultiThreadIoEventLoopGroup
+import io.netty.channel.nio.NioIoHandler
+import java.io.FileDescriptor
 
 class TroadService : VpnService() {
 
-    private val serviceJob =
-        SupervisorJob() // Use SupervisorJob so one task failing doesn't cancel the scope
-
-    // Create a scope that uses Dispatchers.IO for background tasks by default
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    private var vpnInterface: ParcelFileDescriptor? = null
+    private var fildesChannel: FildesChannel? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -70,7 +58,7 @@ class TroadService : VpnService() {
         Log.d(TAG, "onStartCommand received: ${intent?.action}")
         when (intent?.action) {
             ACTION_CONNECT -> {
-                if (isRunning) {
+                if (fildesChannel?.isActive == true) {
                     Log.d(TAG, "VPN already running.")
                     // Optionally update notification or parameters if needed
                     return START_STICKY
@@ -80,30 +68,26 @@ class TroadService : VpnService() {
                 serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 0)
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
-                // Prepare and establish the VPN connection
-                if (prepareAndEstablishVpn()) {
-                    serviceScope.launch {
-                        // isRunning is set in InputHandler channelAdded just before starting the loop
-                        runVpnPacketLoop()
-                    }
+                // Prepare the VPN connection
+                if (prepareVpn()) {
+                    startVpn(vpnInterface?.fileDescriptor!!)
                     startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
                     Log.d(TAG, "VPN connection established and foreground service started.")
                 } else {
                     Log.e(TAG, "Failed to establish VPN connection.")
-                    serviceScope.launch {
-                        stopVpnService() // Clean up and stop
-                    }
+                    stopVpn() // Clean up and stop
+
                 }
             }
 
             ACTION_DISCONNECT -> {
                 Log.d(TAG, "Disconnecting VPN.")
-                serviceScope.launch { disconnectVpn() }
+                stopVpn()
             }
         }
         // If the service is killed, restart it with the last intent (if connect was successful)
         // Or START_NOT_STICKY if you don't want it to auto-restart.
-        return if (isRunning) START_STICKY else START_NOT_STICKY
+        return if (fildesChannel?.isActive == true) START_STICKY else START_NOT_STICKY
     }
 
     private fun createNotificationChannel() { // Definition of your method
@@ -162,75 +146,80 @@ class TroadService : VpnService() {
     }
 
 
-    private fun prepareAndEstablishVpn(): Boolean {
+    private fun prepareVpn(): Boolean {
 
-        try {
-            Log.d(TAG, "Preparing VPN interface at: " + "${TUN_IP}")
-            // --- This is a crucial part where you configure the VPN ---
-            val builder = Builder()
+        Log.d(TAG, "Preparing VPN interface at: $TUN_IP")
+        // --- This is a crucial part where you configure the VPN ---
+        val builder = Builder()
             // Configure IP address, routes, DNS servers, MTU, etc.
             // These are examples and MUST be configured according to your VPN server setup.
-            builder.setSession(getString(R.string.app_name)) // Display name for the VPN session
-                .addAddress(TUN_IP, 24)      // VPN client's virtual IP
-                .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
-                .addDnsServer(DNS1).addDnsServer(DNS2) // Set MTU (adjust as needed)
-                //  .addAllowedApplication("com.example.anotherapp") // For per-app VPN (optional)
-                .addDisallowedApplication(packageName)           // Exclude this app (optional)
-                .setMtu(MTU)
-            // Optional: Configure an intent to open your app's settings if needed before connection
-            // val configureIntent = Intent(this, YourVpnSettingsActivity::class.java)
-            // builder.setConfigureIntent(PendingIntent.getActivity(this, 0, configureIntent, PendingIntent.FLAG_IMMUTABLE))
+            .setSession(getString(R.string.app_name)) // Display name for the VPN session
+            .addAddress(TUN_IP, 24)      // VPN client's virtual IP
+            .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
+            .addDnsServer(DNS1).addDnsServer(DNS2) // Set MTU (adjust as needed)
+            //  .addAllowedApplication("com.example.anotherapp") // For per-app VPN (optional)
+            .addDisallowedApplication(packageName)           // Exclude this app (optional)
+            .setMtu(MTU)
+        // Optional: Configure an intent to open your app's settings if needed before connection
+        // val configureIntent = Intent(this, YourVpnSettingsActivity::class.java)
+        // builder.setConfigureIntent(PendingIntent.getActivity(this, 0, configureIntent, PendingIntent.FLAG_IMMUTABLE))
 
-            try {
-                vpnInterface = builder.establish() // This can return null if user denies permission
-            } catch (e: Exception) {
-                Log.e(TAG, "Error establishing VPN interface", e)
-                // Notify UI about the error if needed
-            }
-
-            if (vpnInterface == null) {
-                Log.e(TAG, "VPN establish returned null. User might have denied permission.")
-                sendBroadcast(
-                    Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
-                        "status", "PERMISSION_DENIED"
-                    )
-                )
-                return false
-            }
-
-            // The key part: Create FileInputStream and FileOutputStream from the SAME FileDescriptor
-            val fd = vpnInterface!!.fileDescriptor // This is java.io.FileDescriptor
-            // For reading outgoing packets from the device
-            vpnReadFileChannel = FileInputStream(fd).channel
-            // For writing incoming packets to the device
-            vpnWriteFileChannel = FileOutputStream(fd).channel
-            Log.d(TAG, "VPN interface established.")
-            return true
+        try {
+            vpnInterface = builder.establish() // This can return null if user denies permission
         } catch (e: Exception) {
             Log.e(TAG, "Error establishing VPN interface", e)
-            // Notify UI about the error if needed
             sendBroadcast(
                 Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
-                    "status", "ERROR: ${e.localizedMessage}"
+                    "status", "Error establishing VPN interface"
                 )
             )
             return false
         }
+
+        if (vpnInterface == null) {
+            Log.e(TAG, "VPN establish returned null. User might have denied permission.")
+            sendBroadcast(
+                Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
+                    "status", "PERMISSION_DENIED"
+                )
+            )
+            return false
+        }
+
+        return true
     }
 
-    private fun runVpnPacketLoop() {
-        Log.i(TAG, "VPN Packet Loop thread started.")
-        try {
-            EmbeddedChannel().pipeline()
-                .addLast(LoggingHandler(LogLevel.INFO))
-                .addLast(InputHandler)
-                .addLast(PacketDecoder)
-                .addLast(DemuxHandler)
-        } catch (e: InterruptedException) {
-            isRunning = false
-            throw RuntimeException(e)
-        } finally {
-            broadcastVpnStatus("VPN starting", isRunning)
+    private fun startVpn(fd: FileDescriptor) {
+
+        // Configure the bootstrap.
+        val group = MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
+        val b = Bootstrap()
+        b.group(group)
+            .channelFactory(ChannelFactory { FildesChannel(null, fd) })
+            .handler(object : ChannelInitializer<FildesChannel>() {
+                override fun initChannel(ch: FildesChannel?) {
+                    ch!!.pipeline()
+                        .addLast(PacketDecoder)
+                        .addLast(DemuxHandler)
+                }
+            })
+        val fildesAddress = FildesAddress(fd)
+        val cf = b.connect(fildesAddress, fildesAddress)
+        cf.addListener { future ->
+            {
+                if (future.isSuccess) {
+                    Log.i(TAG, "VPN connection established.")
+                    fildesChannel = cf.channel() as FildesChannel
+                    broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
+                } else {
+                    sendBroadcast(
+                        Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
+                            "status", "VPN connection failed"
+                        )
+                    )
+                    future.cause().printStackTrace()
+                }
+            }
         }
 
     }
@@ -241,40 +230,8 @@ class TroadService : VpnService() {
      * @param removeNotification Whether to explicitly remove the notification.
      *                           Usually true, but false if called during setup failure before notification is shown.
      */
-    private fun stopVpnService(removeNotification: Boolean = true) {
+    private fun stopVpn(removeNotification: Boolean = true) {
         Log.i(TAG, "stopVpnService called. removeNotification: $removeNotification")
-        isRunning = false // Signal loops and other operations to stop
-
-        // Interrupt the VPN packet handling thread if it's running
-        vpnReaderExecutor?.shutdown()
-        try {
-            vpnReaderExecutor?.awaitTermination(
-                5, SECONDS
-            ) // Wait for the thread to die for a short period
-            if (vpnReaderExecutor?.isTerminated != true) {
-                Log.w(TAG, "VPN packet thread did not terminate in time.")
-            }
-        } catch (_: InterruptedException) {
-            Log.w(TAG, "Interrupted while waiting for VPN thread to join.")
-            vpnReaderExecutor?.shutdownNow()
-            // Preserve interrupt status
-        }
-
-        closeVpnInterface() // Close the TUN interface
-
-        // --- PLACEHOLDER: Close your actual remote VPN server connection here ---
-        // if (remoteSocket != null && !remoteSocket.isClosed()) {
-        //     try {
-        //         remoteSocket.close()
-        //         Log.i(TAG, "Remote VPN server socket closed.")
-        //     } catch (e: IOException) {
-        //         Log.w(TAG, "IOException closing remote socket", e)
-        //     }
-        // }
-        // remoteSocket = null
-        // remoteInStream = null
-        // remoteOutStream = null
-        // --- END OF PLACEHOLDER ---
 
         if (removeNotification) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -289,24 +246,27 @@ class TroadService : VpnService() {
             )
         }
 
-        stopSelf() // Stop the service itself
-        Log.i(TAG, "VPN Service stopped.")
-        broadcastVpnStatus("Disconnected", isRunning) // Notify UI
-    }
+        if (fildesChannel?.isActive == true) {
+            fildesChannel?.close()?.addListener { future ->
+                {
+                    if (!future.isSuccess) {
+                        future.cause().printStackTrace()
+                    }
+                    Log.i(TAG, "VPN connection closed.")
+                    vpnInterface?.close()
+                    stopSelf() // Stop the service itself
+                    Log.i(TAG, "VPN Service stopped.")
+                    broadcastVpnStatus("Disconnected", false) // Notify UI
+                }
 
-    /**
-     * Initiates the disconnection sequence.
-     * Can be called from an intent or internally.
-     */
-    private fun disconnectVpn() {
-        Log.i(TAG, "disconnectVpn called.")
-        if (!isRunning) {
-            Log.d(TAG, "VPN is not running, no need to disconnect further.")
-            // Ensure service stops if it's lingering without being fully connected
-            if (vpnInterface == null) stopSelf()
-            return
+            }
+        } else {
+            vpnInterface?.close()
+            stopSelf() // Stop the service itself
+            Log.i(TAG, "VPN Service stopped.")
+            broadcastVpnStatus("Disconnected", false) // Notify UI
         }
-        stopVpnService(true) // True to remove notification
+
     }
 
     /**
@@ -329,32 +289,12 @@ class TroadService : VpnService() {
 
     }
 
-    /**
-     * Closes the local VPN interface (ParcelFileDescriptor).
-     */
-    private fun closeVpnInterface() {
-        vpnInterface?.let {
-            try {
-                it.close()
-                Log.d(TAG, "VPN interface (ParcelFileDescriptor) closed.")
-            } catch (e: IOException) {
-                Log.e(TAG, "IOException closing VPN interface", e)
-            }
-        }
-        vpnInterface = null
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "VPN Service Destroyed.")
         // Ensure all resources are cleaned up if not already done.
         // This is a final safeguard.
-        if (isRunning || vpnInterface != null || vpnReaderExecutor?.isTerminated != true) {
-            Log.w(
-                TAG, "onDestroy: Forcing cleanup as service might not have stopped cleanly."
-            )
-            stopVpnService(true)
-        }
+        stopVpn()
     }
 
 }
