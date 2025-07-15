@@ -246,10 +246,10 @@ class TroadService : VpnService() {
             )
         }
 
-        if (fildesChannel?.isInputShutdown() == false) {
+        if (fildesChannel?.isInputShutdown() != true) {
             fildesChannel?.shutdownInput()
         }
-        if(fildesChannel?.isOutputShutdown() == false) {
+        if(fildesChannel?.isOutputShutdown() != true) {
             fildesChannel?.shutdownOutput()
         }
 
