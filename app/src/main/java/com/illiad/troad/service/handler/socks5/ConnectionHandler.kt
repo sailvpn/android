@@ -80,22 +80,27 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                                     .channel().writeAndFlush(request)
                                     .addListener(ChannelFutureListener { future2: ChannelFuture? ->
                                         if (!future2!!.isSuccess) {
-                                            ctx.fireExceptionCaught(Exception(future2.cause()))
+                                            // do not fire exception for exceptions on individual out-going channels
+                                            // ctx.fireExceptionCaught(Exception(future2.cause()))
                                             closeOnFlush(ch)
-                                            closeOnFlush(ctx.channel())
+                                            // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
+                                            //closeOnFlush(ctx.channel())
                                         }
                                     })
                             } else {
-                                ctx.fireExceptionCaught(Exception(future1.cause()))
+                                // do not fire exception for exceptions on individual out-going channels
+                                // ctx.fireExceptionCaught(Exception(future1.cause()))
                                 closeOnFlush(ch)
-                                closeOnFlush(ctx.channel()) // Close the channel on failure
+                                // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
+                                //closeOnFlush(ctx.channel())
                             }
                         })
                 } else {
-                    // Close the connection if the connection attempt has failed.
-                    ctx.fireExceptionCaught(future.cause())
+                    // do not fire exception for exceptions on individual out-going channels
+                    // ctx.fireExceptionCaught(future.cause())
                     closeOnFlush(future.channel())
-                    closeOnFlush(ctx.channel())
+                    // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
+                    //closeOnFlush(ctx.channel())
                 }
             })
     }
