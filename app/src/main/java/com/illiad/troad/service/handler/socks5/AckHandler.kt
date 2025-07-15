@@ -21,14 +21,11 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
             closeOnFlush(ctx?.channel()!!)
             return
         }
-        if (response.status() === Socks5CommandStatus.SUCCESS) {
-            // frontend refers to the DemuxHandler
-            val frontend = frontendCtx.channel()!!
-            val frontendPipeline = frontend.pipeline()
+        if (response.status() == Socks5CommandStatus.SUCCESS) {
             val backend = ctx.channel()!!
             val backendPipeline = backend.pipeline()
             // setup ip handlers for backend
-            backendPipeline.addLast(PacketEncoder).addLast(RelayHandler())
+            backendPipeline.addLast(PacketEncoder).addLast(RelayHandler(frontendCtx.channel()))
             val prefix: String = HandlerNamer.prefix
             // remove all handlers except SslHandler from backendPipeline
             for (name in backendPipeline.names()) {
@@ -36,19 +33,13 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
                     backendPipeline.remove(name)
                 }
             }
-            // remove all handlers except LoggingHandler from frontendPipeline
-            for (name in frontendPipeline.names()) {
-                if (name.startsWith(prefix)) {
-                    frontendPipeline.remove(name)
-                }
-            }
 
             // associate backend channel with connection, now that it is established
             val session = Demux.getSession(connection);
             if (session != null) {
                 session.setSessionChannel(backend)
-                // forward the first packet to the backend, to
-                if(!session.isBufferEmpty()){
+                // forward the first packet to the backend
+                if(session.isBufferEmpty() != true){
                     session.writeAndFlush(session.getPacket()!!)
                 }
             } else {
