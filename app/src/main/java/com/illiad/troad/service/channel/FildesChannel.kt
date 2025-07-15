@@ -132,11 +132,9 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         do {
             val byteBuf = allocHandle.allocate(config().allocator)
             var bytesRead: Int
-            var readSuccess: Boolean
             try {
                 bytesRead = byteBuf.writeBytes(nioChannel, allocHandle.attemptedBytesRead())
                 if (bytesRead > 0) {
-                    readSuccess = true
                     allocHandle.lastBytesRead(bytesRead)
                     allocHandle.incMessagesRead(1)
                     pipeline().fireChannelRead(byteBuf)
@@ -171,7 +169,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
                 // close(voidPromise())
                 return // Exit doBeginRead after error
             }
-            continueReading = readSuccess && allocHandle.continueReading() && config().isAutoRead
+            continueReading = allocHandle.continueReading() && config().isAutoRead
         } while (continueReading)
         pipeline().fireChannelReadComplete()
     }
@@ -179,7 +177,6 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
     override fun doWrite(buffer: ChannelOutboundBuffer) {
         if (outputShutdown || !isActive) {
             // Drain the buffer and fail promises if not active or output shutdown
-            var cause: IOException? = null // To avoid creating multiple exception objects
             while (true) {
                 // When removing with an exception, the promise is automatically failed with that cause.
                 // buffer.current() is not how you get the message to remove with cause.
