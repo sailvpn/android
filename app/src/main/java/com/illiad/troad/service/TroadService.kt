@@ -246,6 +246,13 @@ class TroadService : VpnService() {
             )
         }
 
+        if (fildesChannel?.isInputShutdown() == false) {
+            fildesChannel?.shutdownInput()
+        }
+        if(fildesChannel?.isOutputShutdown() == false) {
+            fildesChannel?.shutdownOutput()
+        }
+
         if (fildesChannel?.isActive == true) {
             fildesChannel?.close()?.addListener { future ->
                 {
