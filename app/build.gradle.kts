@@ -44,6 +44,55 @@ android {
         resources {
             excludes += "/META-INF/INDEX.LIST"
             excludes += "/META-INF/io.netty.versions.properties"
+
+            // Option 1: Pick the first one encountered (most common for licenses)
+            pickFirsts.add("META-INF/license/LICENSE.webbit.txt")
+            pickFirsts.add("META-INF/license/LICENSE.jbzip2.txt")
+            pickFirsts.add("META-INF/license/LICENSE.snappy.txt")
+            pickFirsts.add("META-INF/license/LICENSE.xz.txt")
+            pickFirsts.add("META-INF/license/LICENSE.protobuf.txt")
+            pickFirsts.add("META-INF/license/LICENSE.nghttp2-hpack.txt")
+            pickFirsts.add("META-INF/license/LICENSE.base64.txt")
+            pickFirsts.add("META-INF/license/LICENSE.commons-lang.txt")
+            pickFirsts.add("META-INF/license/LICENSE.jzlib.txt")
+            pickFirsts.add("META-INF/license/LICENSE.jctools.txt")
+            pickFirsts.add("META-INF/license/LICENSE.log4j.txt")
+            pickFirsts.add("META-INF/license/LICENSE.libdivsufsort.txt")
+            pickFirsts.add("META-INF/license/LICENSE.commons-logging.txt")
+            pickFirsts.add("META-INF/license/LICENSE.hyper-hpack.txt")
+            pickFirsts.add("META-INF/native-image/io.netty/netty-codec-native-quic/resource-config.json")
+            pickFirsts.add("META-INF/license/LICENSE.bouncycastle.txt")
+            pickFirsts.add("META-INF/license/LICENSE.lzma-java.txt")
+            pickFirsts.add("META-INF/native-image/io.netty/netty-codec-native-quic/reflect-config.json")
+            pickFirsts.add("META-INF/license/LICENSE.caliper.txt")
+            pickFirsts.add("META-INF/license/LICENSE.lz4.txt")
+            pickFirsts.add("META-INF/license/LICENSE.boringssl.txt")
+            pickFirsts.add("META-INF/license/LICENSE.jsr166y.txt")
+            pickFirsts.add("META-INF/license/NOTICE.harmony.txt")
+            pickFirsts.add("META-INF/license/LICENSE.quiche.txt")
+            pickFirsts.add("META-INF/license/LICENSE.mvn-wrapper.txt")
+            pickFirsts.add("META-INF/license/LICENSE.slf4j.txt")
+            pickFirsts.add("META-INF/license/LICENSE.aalto-xml.txt")
+            pickFirsts.add("META-INF/license/LICENSE.dnsinfo.txt")
+            pickFirsts.add("META-INF/license/LICENSE.zstd-jni.txt")
+            pickFirsts.add("META-INF/native-image/io.netty/netty-codec-native-quic/native-image.properties")
+            pickFirsts.add("META-INF/license/LICENSE.compress-lzf.txt")
+            pickFirsts.add("META-INF/license/LICENSE.jboss-marshalling.txt")
+            pickFirsts.add("META-INF/license/LICENSE.hpack.txt")
+            pickFirsts.add("META-INF/native-image/io.netty/netty-codec-native-quic/jni-config.json")
+            pickFirsts.add("META-INF/license/LICENSE.harmony.txt")
+            pickFirsts.add("META-INF/license/LICENSE.jfastlz.txt")
+            pickFirsts.add("META-INF/license/LICENSE.brotli4j.txt")
+
+            // Option 2: Exclude the file (use with caution, understand implications)
+            // excludes.add("META-INF/license/LICENSE.webbit.txt")
+
+            // You might encounter similar issues with other META-INF files,
+            // so you might need to add more pickFirst or exclude rules:
+            // pickFirsts.add("META-INF/LICENSE.txt")
+            // pickFirsts.add("META-INF/NOTICE.txt")
+            // pickFirsts.add("META-INF/DEPENDENCIES")
+            // ... and so on for any other conflicts reported by Gradle.
         }
 
     }
