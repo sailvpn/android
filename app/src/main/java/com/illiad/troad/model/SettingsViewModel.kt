@@ -181,7 +181,7 @@ class SettingsViewModel(
         val stopTroad = Intent(app.applicationContext, TroadService::class.java).apply {
             action = ACTION_DISCONNECT
         }
-        app.stopService(stopTroad)
+        app.startService(stopTroad)
         isProxyRunning = false
     }
 
