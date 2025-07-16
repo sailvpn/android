@@ -41,10 +41,16 @@ import io.netty.channel.ChannelFactory
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.MultiThreadIoEventLoopGroup
 import io.netty.channel.nio.NioIoHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.FileDescriptor
 
 class TroadService : VpnService() {
 
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var vpnInterface: ParcelFileDescriptor? = null
     private var fildesChannel: FildesChannel? = null
 
@@ -68,21 +74,24 @@ class TroadService : VpnService() {
                 serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 0)
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
-                // Prepare the VPN connection
-                if (prepareVpn()) {
-                    startVpn(vpnInterface?.fileDescriptor!!)
-                    startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
-                    Log.d(TAG, "VPN connection established and foreground service started.")
-                } else {
-                    Log.e(TAG, "Failed to establish VPN connection.")
-                    stopVpn() // Clean up and stop
-
+                serviceScope.launch {
+                    // Prepare the VPN connection
+                    if (prepareVpn()) {
+                        startVpn(vpnInterface?.fileDescriptor!!)
+                        startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
+                        Log.d(TAG, "VPN connection established.")
+                    } else {
+                        Log.e(TAG, "Failed to establish VPN connection.")
+                        stopVpn() // Clean up and stop
+                    }
                 }
             }
 
             ACTION_DISCONNECT -> {
                 Log.d(TAG, "Disconnecting VPN.")
-                stopVpn()
+                serviceScope.launch {
+                    stopVpn()
+                }
             }
         }
         // If the service is killed, restart it with the last intent (if connect was successful)
@@ -204,7 +213,7 @@ class TroadService : VpnService() {
                 }
             })
         val fildesAddress = FildesAddress(fd)
-        val cf = b.connect(fildesAddress, fildesAddress)
+        val cf = b.connect(fildesAddress, fildesAddress).sync()
         cf.addListener { future ->
             {
                 if (future.isSuccess) {
@@ -301,7 +310,9 @@ class TroadService : VpnService() {
         Log.i(TAG, "VPN Service Destroyed.")
         // Ensure all resources are cleaned up if not already done.
         // This is a final safeguard.
-        stopVpn()
+        serviceScope.launch {
+            stopVpn()
+        }
     }
 
 }
