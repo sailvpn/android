@@ -203,8 +203,7 @@ class TroadService : VpnService() {
         // Configure the bootstrap.
         val group = MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
         val b = Bootstrap()
-        b.group(group)
-            .channelFactory(ChannelFactory { FildesChannel(null, fd) })
+        b.group(group).channelFactory(ChannelFactory { FildesChannel(null, fd) })
             .handler(object : ChannelInitializer<FildesChannel>() {
                 override fun initChannel(ch: FildesChannel?) {
                     ch!!.pipeline()
@@ -255,34 +254,20 @@ class TroadService : VpnService() {
             )
         }
 
-        if (fildesChannel?.isInputShutdown() != true) {
-            fildesChannel?.shutdownInput()
-        }
-        if(fildesChannel?.isOutputShutdown() != true) {
-            fildesChannel?.shutdownOutput()
-        }
-
         if (fildesChannel?.isActive == true) {
-            fildesChannel?.close()?.addListener { future ->
+            fildesChannel?.close()?.sync()?.addListener { future ->
                 {
                     if (!future.isSuccess) {
                         future.cause().printStackTrace()
                     }
                     Log.i(TAG, "VPN connection closed.")
-                    vpnInterface?.close()
-                    stopSelf() // Stop the service itself
-                    Log.i(TAG, "VPN Service stopped.")
-                    broadcastVpnStatus("Disconnected", false) // Notify UI
                 }
-
             }
-        } else {
-            vpnInterface?.close()
-            stopSelf() // Stop the service itself
-            Log.i(TAG, "VPN Service stopped.")
-            broadcastVpnStatus("Disconnected", false) // Notify UI
         }
-
+        vpnInterface?.close()
+        stopSelf() // Stop the service itself
+        Log.i(TAG, "VPN Service stopped.")
+        broadcastVpnStatus("Disconnected", false) // Notify UI
     }
 
     /**
