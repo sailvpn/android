@@ -11,12 +11,12 @@ import org.pcap4j.packet.UnknownPacket
 import org.pcap4j.packet.factory.PacketFactories
 import org.pcap4j.packet.namednumber.DataLinkType
 
-object PacketDecoder : ByteToMessageDecoder() {
+private const val MIN_IPV4_HEADER_SIZE = 20
+private const val IPV6_HEADER_SIZE = 40 // Fixed size for IPv6 header
+private const val VERSION_IPV4 = 4
+private const val VERSION_IPV6 = 6
 
-    private const val MIN_IPV4_HEADER_SIZE = 20
-    private const val IPV6_HEADER_SIZE = 40 // Fixed size for IPv6 header
-    private const val VERSION_IPV4 = 4
-    private const val VERSION_IPV6 = 6
+class PacketDecoder : ByteToMessageDecoder() {
 
     /**
      * Decodes IP packets from the given ByteBuf.
@@ -208,6 +208,4 @@ object PacketDecoder : ByteToMessageDecoder() {
         }
         return null
     }
-
-
 }

@@ -74,14 +74,17 @@ class TroadService : VpnService() {
                 serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 0)
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
-                serviceScope.launch {
-                    // Prepare the VPN connection
-                    if (prepareVpn()) {
+
+                // Prepare the VPN connection
+                if (prepareVpn()) {
+                    serviceScope.launch {
                         startVpn(vpnInterface?.fileDescriptor!!)
-                        startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
-                        Log.d(TAG, "VPN connection established.")
-                    } else {
-                        Log.e(TAG, "Failed to establish VPN connection.")
+                    }
+                    startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
+                    Log.d(TAG, "VPN connection established.")
+                } else {
+                    Log.e(TAG, "Failed to establish VPN connection.")
+                    serviceScope.launch {
                         stopVpn() // Clean up and stop
                     }
                 }
@@ -203,56 +206,41 @@ class TroadService : VpnService() {
         // Configure the bootstrap.
         val group = MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
         val b = Bootstrap()
-        b.group(group).channelFactory(ChannelFactory { FildesChannel(null, fd) })
+        fildesChannel = FildesChannel(null, fd)
+        b.group(group).channelFactory(ChannelFactory { fildesChannel })
             .handler(object : ChannelInitializer<FildesChannel>() {
                 override fun initChannel(ch: FildesChannel?) {
                     ch!!.pipeline()
-                        .addLast(PacketDecoder)
+                        .addLast(PacketDecoder())
                         .addLast(DemuxHandler)
                 }
             })
         val fildesAddress = FildesAddress(fd)
-        val cf = b.connect(fildesAddress, fildesAddress).sync()
-        cf.addListener { future ->
-            {
-                if (future.isSuccess) {
-                    Log.i(TAG, "VPN connection established.")
-                    fildesChannel = cf.channel() as FildesChannel
-                    broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
-                } else {
-                    sendBroadcast(
-                        Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
-                            "status", "VPN connection failed"
+        b.connect(fildesAddress, fildesAddress)
+            .addListener { future ->
+                {
+                    if (future.isSuccess) {
+                        Log.i(TAG, "VPN connection established.")
+                        broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
+                    } else {
+                        sendBroadcast(
+                            Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
+                                "status", "VPN connection failed"
+                            )
                         )
-                    )
-                    future.cause().printStackTrace()
+                        future.cause().printStackTrace()
+                    }
                 }
             }
-        }
 
     }
 
     /**
      * Stops the VPN service, cleans up resources, and stops the foreground notification.
      * Call this when the VPN is meant to be fully shut down.
-     * @param removeNotification Whether to explicitly remove the notification.
-     *                           Usually true, but false if called during setup failure before notification is shown.
      */
-    private fun stopVpn(removeNotification: Boolean = true) {
-        Log.i(TAG, "stopVpnService called. removeNotification: $removeNotification")
-
-        if (removeNotification) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            Log.d(TAG, "Foreground service stopped and notification removed.")
-        } else {
-            // If called due to setup failure before startForeground,
-            // we might not need to call stopForeground if it was never started.
-            // However, calling stopSelf ensures the service itself stops if it's in a startable state.
-            Log.d(
-                TAG,
-                "stopVpnService: Notification not explicitly removed (or may not have been shown)."
-            )
-        }
+    private fun stopVpn() {
+        Log.i(TAG, "stopVpnService called")
 
         if (fildesChannel?.isActive == true) {
             fildesChannel?.close()?.sync()?.addListener { future ->
@@ -265,9 +253,9 @@ class TroadService : VpnService() {
             }
         }
         vpnInterface?.close()
-        stopSelf() // Stop the service itself
-        Log.i(TAG, "VPN Service stopped.")
+        Log.i(TAG, "VPN Service stopped")
         broadcastVpnStatus("Disconnected", false) // Notify UI
+        stopSelf() // Stop the service itself
     }
 
     /**
@@ -292,12 +280,11 @@ class TroadService : VpnService() {
 
     override fun onDestroy() {
         super.onDestroy()
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "VPN Service Destroyed.")
         // Ensure all resources are cleaned up if not already done.
         // This is a final safeguard.
-        serviceScope.launch {
-            stopVpn()
-        }
     }
 
 }
