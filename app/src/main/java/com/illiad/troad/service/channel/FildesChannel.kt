@@ -207,9 +207,8 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
                         //    // It might be sufficient to just clear the flag and let the normal flow resume.
                         // }
 
-                        // If autoRead is enabled, Netty's read loop in HeadContext will likely call
-                        // channel.read() again if appropriate, and then doBeginRead() will be re-entered.
-                        // By then, isPausedDueToZeroRead will be false.
+                        // restart the read loop
+                        pipeline().fireChannelReadComplete()
 
                     }, ZERO_READ_PAUSE_MS, TimeUnit.MILLISECONDS)
 
