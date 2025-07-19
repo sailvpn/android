@@ -118,7 +118,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
             // We are waiting for the scheduled resume.
             // The scheduled task will re-trigger doBeginRead.
             logger.trace(
-                "{} in paused state due to previous zero-byte read, awaiting resume.",
+                "{} in paused state.",
                 this
             )
             return
