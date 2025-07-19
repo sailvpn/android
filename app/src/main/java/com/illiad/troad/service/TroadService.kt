@@ -84,17 +84,14 @@ class TroadService : VpnService() {
                     Log.d(TAG, "VPN connection established.")
                 } else {
                     Log.e(TAG, "Failed to establish VPN connection.")
-                    serviceScope.launch {
-                        stopVpn() // Clean up and stop
-                    }
+                    stopVpn() // Clean up and stop
+
                 }
             }
 
             ACTION_DISCONNECT -> {
                 Log.d(TAG, "Disconnecting VPN.")
-                serviceScope.launch {
-                    stopVpn()
-                }
+                stopVpn()
             }
         }
         // If the service is killed, restart it with the last intent (if connect was successful)
