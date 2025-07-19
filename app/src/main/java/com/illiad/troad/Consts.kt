@@ -8,13 +8,13 @@ object Consts {
     const val DNS2 = "8.8.4.4"
     const val MTU = 1400 // Android VpnService.Builder.establish() will crash on a too high number
 
-    const val ACTION_CONNECT = "com.illiad.troad.CONNECT"
-    const val ACTION_DISCONNECT = "com.illiad.troad.DISCONNECT"
+    const val ACTION_CONNECT = "qmt7e"
+    const val ACTION_DISCONNECT = "dtpov"
 
     // Keys for passing parameters via Intent extras
-    const val EXTRA_SERVER_ADDRESS = "com.illiad.troad.SERVER_ADDRESS"
-    const val EXTRA_SERVER_PORT = "com.illiad.troad.SERVER_PORT"
-    const val EXTRA_SHARED_SECRET = "com.illiad.troad.SHARED_SECRET"
+    const val EXTRA_SERVER_ADDRESS = "mjupy"
+    const val EXTRA_SERVER_PORT = "yrqvm"
+    const val EXTRA_SHARED_SECRET = "ebhel"
 
 
     const val NOTIFICATION_CHANNEL_ID = "TroadService"
@@ -24,8 +24,8 @@ object Consts {
     const val PENDING_INTENT_REQUEST_CODE_DISCONNECT = 1002
 
     // ... other constants ...
-    const val ACTION_VPN_STATUS_BROADCAST = "com.illiad.troad.STATUS_BROADCAST"
-    const val EXTRA_STATUS_MESSAGE = "com.illiad.troad.STATUS_MESSAGE"
-    const val EXTRA_IS_CONNECTED = "com.illiad.troad.IS_CONNECTED"
+    const val ACTION_VPN_STATUS_BROADCAST = "zsg35"
+    const val EXTRA_STATUS_MESSAGE = "gcifu"
+    const val EXTRA_IS_CONNECTED = "zprvu"
 
 }
