@@ -254,7 +254,7 @@ class TroadService : VpnService() {
         }
         vpnInterface?.close()
         Log.i(TAG, "VPN Service stopped")
-        broadcastVpnStatus("Disconnected", false) // Notify UI
+
         stopSelf() // Stop the service itself
     }
 
@@ -282,6 +282,7 @@ class TroadService : VpnService() {
         super.onDestroy()
 
         stopForeground(STOP_FOREGROUND_REMOVE)
+        broadcastVpnStatus("Disconnected", false) // Notify UI
         Log.i(TAG, "VPN Service Destroyed.")
         // Ensure all resources are cleaned up if not already done.
         // This is a final safeguard.
