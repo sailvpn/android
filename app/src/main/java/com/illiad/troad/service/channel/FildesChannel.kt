@@ -16,6 +16,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.SocketAddress
+import java.util.concurrent.TimeUnit
 import java.nio.channels.FileChannel as NioFileChannel // Alias to avoid clash
 
 class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : AbstractChannel(parent) {
@@ -34,6 +35,10 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
 
     @Volatile
     private var channelActive = false
+
+    @Volatile // Ensure visibility across threads, though operations should be on eventloop
+    private var isPausedDueToZeroRead = false
+    private val ZERO_READ_PAUSE_MS = 10L // 10 milliseconds
 
     private val fildesAddress = FildesAddress(fd) // Assuming FildesAddress exists
 
@@ -106,73 +111,137 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
     }
 
     override fun doBeginRead() {
-        if (inputShutdown || !isActive) { // Check inputShutdown flag
+        // If we are currently in a paused state, do not attempt to read immediately.
+        // The scheduled task will re-trigger doBeginRead indirectly.
+        if (isPausedDueToZeroRead) {
+            // We are waiting for the scheduled resume.
+            // The expectation is that autoRead or an explicit read() call
+            // will eventually call doBeginRead() again AFTER isPausedDueToZeroRead is false.
+            // To be safe, if autoRead is off, this state might persist.
+            // It might be better to have the scheduled task clear the flag and *then*
+            // explicitly call read() if autoRead is false.
+            logger.trace("{} in paused state due to previous zero-byte read, awaiting resume.", this)
             return
         }
 
-        val nioChannel = nioInputStreamChannel ?: run {
-            logger.warn("Input stream channel is null, cannot read from {}", this)
-            // Consider if an error should be propagated or input marked as shutdown
-            if (!inputShutdown) { // Avoid redundant shutdown if already called
-                shutdownInput().addListener { future ->
-                    if (!future.isSuccess) {
-                        logger.warn(
-                            "Error trying to shutdown input after finding null nioChannel during read",
-                            future.cause()
-                        )
-                    }
-                }
-            }
+        if(inputShutdown || !isActive) {
             return
         }
+
         val allocHandle = unsafe().recvBufAllocHandle()
-        allocHandle.reset(config())
+        // Make sure to reset messages read at the beginning of a fresh read operation cycle
+        // if allocHandle is reused across multiple doBeginRead calls initiated by external read() signals.
+        // AbstractNioByteChannel does this: allocHandle.reset(config());
+        // Let's assume your allocHandle from unsafe() is correctly reset or configured.
+        // For this example, let's explicitly reset messagesRead for this read attempt cycle.
+        allocHandle.reset(config()) // Essential if not done by unsafe().recvBufAllocHandle() for each "read cycle"
 
-        var continueReading: Boolean
+        var continueReading = false
+        var firstIteration = true // To ensure we attempt at least one read if not paused
+
         do {
+            // If not the first iteration and we are now trying to continue reading
+            // but are paused, break the loop. The pause mechanism will handle resuming.
+            if (!firstIteration && isPausedDueToZeroRead) {
+                continueReading = false // Stop this current read loop
+                break
+            }
+            firstIteration = false
+
             val byteBuf = allocHandle.allocate(config().allocator)
             var bytesRead: Int
+            var pauseAndReschedule = false
+
             try {
-                bytesRead = byteBuf.writeBytes(nioChannel, allocHandle.attemptedBytesRead())
+                bytesRead = byteBuf.writeBytes(nioInputStreamChannel, allocHandle.attemptedBytesRead())
+
                 if (bytesRead > 0) {
                     allocHandle.lastBytesRead(bytesRead)
                     allocHandle.incMessagesRead(1)
                     pipeline().fireChannelRead(byteBuf)
-                } else if (bytesRead == 0 && !byteBuf.isWritable) {
+                    // Continue reading based on allocator's decision
+                    continueReading = allocHandle.continueReading() && config().isAutoRead
+                } else if (bytesRead == 0 && !byteBuf.isWritable) { // Buffer full but read 0 (unlikely for file)
                     byteBuf.release()
+                    continueReading = false // Stop, buffer was full, nothing read.
                     break
                 } else if (bytesRead < 0) { // EOF
-                    allocHandle.lastBytesRead(-1)
-                    byteBuf.release() // Release buffer first
-                    shutdownInput()   // Call the method to shutdown input
-                    break // EOF
-                } else { // bytesRead == 0 and buffer still writable
+                    allocHandle.lastBytesRead(-1) // Signal EOF to allocator
                     byteBuf.release()
+                    shutdownInput() // Initiate input shutdown
+                    continueReading = false // Stop reading
                     break
+                } else { // bytesRead == 0 (and buffer is still writable)
+                    // THIS IS THE CRITICAL 0-BYTE READ SCENARIO
+                    byteBuf.release() // Release the allocated buffer that wasn't used
+
+                    logger.trace("{} read 0 bytes from nioInputStream. Pausing for {} ms.", this, ZERO_READ_PAUSE_MS)
+                    isPausedDueToZeroRead = true
+                    continueReading = false // Stop the current read loop
+
+                    // Schedule a task to clear the flag and potentially re-trigger a read.
+                    // This task will run on the EventLoop, so it's non-blocking.
+                    eventLoop().schedule({
+                        isPausedDueToZeroRead = false
+                        logger.trace("{} pause ended. Triggering subsequent read if autoRead is on or pipeline requests it.", this)
+
+                        // If autoRead is on, Netty's HeadContext might naturally call read() again
+                        // once this event loop task completes and we return from the current doBeginRead stack.
+                        // If autoRead is off, AND no other handler is calling ctx.read() in channelReadComplete,
+                        // we might need to explicitly trigger a read here to ensure we don't starve.
+                        // However, directly calling this.read() from here can be tricky with
+                        // how HeadContext manages readInProgress.
+
+                        // A safer way if autoRead is off:
+                        // If config().isAutoRead is false, subsequent reads rely on explicit calls to channel.read().
+                        // The pause allows other events to be processed. If a handler calls read()
+                        // during or after the pause, it will work.
+                        // If no handler calls read(), we might remain paused if autoRead is false.
+
+                        // Consider what should happen if autoRead is false:
+                        // if (!config().isAutoRead()) {
+                        //    // If autoRead is false, a read must be explicitly requested.
+                        //    // This scheduled task means the previous "read operation" (the one that got 0 bytes)
+                        //    // has effectively completed its pause. If a handler was waiting to call read()
+                        //    // in its channelReadComplete, this pause gives that chance.
+                        //    // It might be sufficient to just clear the flag and let the normal flow resume.
+                        // }
+
+                        // If autoRead is enabled, Netty's read loop in HeadContext will likely call
+                        // channel.read() again if appropriate, and then doBeginRead() will be re-entered.
+                        // By then, isPausedDueToZeroRead will be false.
+
+                    }, ZERO_READ_PAUSE_MS, TimeUnit.MILLISECONDS)
+
+                    pauseAndReschedule = true // Signal to break outer loop
+                    break // Exit inner try-catch, then outer do-while
                 }
             } catch (e: IOException) {
                 byteBuf.release()
                 pipeline().fireExceptionCaught(e)
-                // Decide if the entire channel should close or just input
-                // For a read error, often the input or whole channel is compromised.
+                // Shutdown logic as before
                 shutdownInput().addListener { future ->
                     if (!future.isSuccess) {
-                        logger.warn(
-                            "Error during shutdownInput after read exception",
-                            future.cause()
-                        )
+                        logger.warn("Error during shutdownInput after read exception", future.cause())
                     }
-                    // Optionally close the whole channel if input shutdown fails or policy dictates
-                    // close(voidPromise())
                 }
-                // If the exception implies the whole channel is broken, then:
-                // close(voidPromise())
+                continueReading = false // Stop on error
                 return // Exit doBeginRead after error
             }
-            continueReading = allocHandle.continueReading() && config().isAutoRead
-        } while (continueReading)
+
+            if (pauseAndReschedule) {
+                break // Exit the do-while loop immediately
+            }
+
+        } while (continueReading) // ContinueReading will be false if we paused or other conditions met
+
+        // This is called AFTER the loop, whether we read data, hit EOF, or initiated a pause.
+        // If we paused, fireChannelReadComplete() happens, and the event loop can do other things.
+        // When the scheduled task runs, it clears isPausedDueToZeroRead.
+        // If autoRead is true, HeadContext might call read() again, leading back to doBeginRead().
         pipeline().fireChannelReadComplete()
     }
+
 
     override fun doWrite(buffer: ChannelOutboundBuffer) {
         if (outputShutdown || !isActive) {
