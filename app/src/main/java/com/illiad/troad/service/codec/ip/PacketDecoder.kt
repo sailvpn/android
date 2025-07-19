@@ -18,6 +18,12 @@ private const val VERSION_IPV6 = 6
 
 class PacketDecoder : ByteToMessageDecoder() {
 
+
+    override fun channelReadComplete(ctx: ChannelHandlerContext?) {
+        super.channelReadComplete(ctx)
+        ctx?.read()
+    }
+
     /**
      * Decodes IP packets from the given ByteBuf.
      *
