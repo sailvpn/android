@@ -141,7 +141,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
 
             try {
                 bytesRead =
-                    byteBuf.writeBytes(nioInputStreamChannel, allocHandle.attemptedBytesRead())
+                    byteBuf.writeBytes(nioInputStreamChannel, byteBuf.writableBytes())
 
                 if (bytesRead > 0) {
                     allocHandle.lastBytesRead(bytesRead)
