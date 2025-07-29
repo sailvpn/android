@@ -15,13 +15,27 @@ private const val MIN_IPV4_HEADER_SIZE = 20
 private const val IPV6_HEADER_SIZE = 40 // Fixed size for IPv6 header
 private const val VERSION_IPV4 = 4
 private const val VERSION_IPV6 = 6
+private val lock = Any()
+private var decoding = false
+private var triggered = false
 
 class PacketDecoder : ByteToMessageDecoder() {
 
-
     override fun channelReadComplete(ctx: ChannelHandlerContext?) {
-        super.channelReadComplete(ctx)
-        ctx?.read()
+
+        // triggering can (and should) be done at 2 places,
+        // 1, here(channel finished reading)
+        // 2, at the end of  decode(), when all packets are parsed and added to the out list.
+        // cordination must be done to avoid double trigger or missing trigger
+        synchronized(lock) {
+            if (!decoding && !triggered) {
+                super.channelReadComplete(ctx)
+                ctx?.read()
+                triggered = true
+            } else {
+                triggered = false
+            }
+        }
     }
 
     /**
@@ -36,7 +50,10 @@ class PacketDecoder : ByteToMessageDecoder() {
         if (byteBuf == null || !byteBuf.isReadable || byteBuf.readableBytes() < 1) {
             return
         }
-
+        // prevent channelReadComplete() from triggering reading more bytes while processing
+        synchronized(lock) {
+            decoding = true
+        }
         while (byteBuf.readableBytes() > 0) {
             // Peek at the first byte to get the IP version without advancing readerIndex yet
             val firstByte = byteBuf.getByte(byteBuf.readerIndex())
@@ -73,8 +90,28 @@ class PacketDecoder : ByteToMessageDecoder() {
                 }
             }
         }
-        byteBuf.release()
         ctx!!.fireChannelRead(out)
+        byteBuf.release()
+
+        // decoding done, allow channelReadComplete() to trigger reading
+
+        synchronized(lock) {
+            decoding = false
+
+            // triggering can (and should) be done at 2 places,
+            // 1, here(when all packets are parsed and added to the out list.)
+            // 2, at channelReadComplete(), when channel finished reading
+            // cordination must be done to avoid double trigger or missing trigger
+
+            if (triggered) {
+                // reset trigger
+                triggered = false
+            } else {
+                super.channelReadComplete(ctx)
+                ctx.read()
+                triggered = true
+            }
+        }
     }
 
     private fun parseIpV4Packet(byteBuf: ByteBuf): IpV4Packet? {

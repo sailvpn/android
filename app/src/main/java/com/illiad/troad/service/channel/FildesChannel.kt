@@ -135,12 +135,11 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         allocHandle.reset(config())
 
         var continueReading = false
+        // alloc byteBuf once per read cycle
+        val byteBuf = allocHandle.allocate(config().allocator)
         do {
-            val byteBuf = allocHandle.allocate(config().allocator)
-            var bytesRead: Int
-
             try {
-                bytesRead =
+                val bytesRead =
                     byteBuf.writeBytes(nioInputStreamChannel, byteBuf.writableBytes())
 
                 if (bytesRead > 0) {
@@ -171,16 +170,24 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
                             "{} pause ended.",
                             this
                         )
-                        // restart the read loop
+                        // restart process 10 millseconds later
                         pipeline().fireChannelReadComplete()
                     }, ZERO_READ_PAUSE_MS, TimeUnit.MILLISECONDS)
-
-                    break
+                    return // Exit doBeginRead without informing pipeline
                 } else if (bytesRead < 0) { // EOF
                     allocHandle.lastBytesRead(-1) // Signal EOF to allocator
                     byteBuf.release()
-                    shutdownInput() // Initiate input shutdown
-                    break
+                    shutdownInput().addListener { future ->
+                        {
+                            if (!future.isSuccess) {
+                                logger.warn(
+                                    "Error shutdown Input after EOF",
+                                    future.cause()
+                                )
+                            }
+                        }
+                    }
+                    return // Exit doBeginRead, process stopped
                 }
             } catch (e: IOException) {
                 byteBuf.release()
@@ -189,22 +196,20 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
                 shutdownInput().addListener { future ->
                     if (!future.isSuccess) {
                         logger.warn(
-                            "Error during shutdownInput after read exception",
+                            "Error shutdown Input after exception",
                             future.cause()
                         )
                     }
                 }
                 // Stop on error
-                return // Exit doBeginRead after error
+                return // Exit doBeginRead after error, process stopped
             }
 
-        } while (continueReading) // ContinueReading will be false if we paused or other conditions met
+        } while (continueReading)
 
-        // This is called AFTER the loop, whether we read data, hit EOF, or initiated a pause.
-        // If autoRead is true, HeadContext might call read() again, leading back to doBeginRead().
+        // no more data to read, inform pipeline
         pipeline().fireChannelReadComplete()
     }
-
 
     override fun doWrite(buffer: ChannelOutboundBuffer) {
         if (outputShutdown || !isActive) {
