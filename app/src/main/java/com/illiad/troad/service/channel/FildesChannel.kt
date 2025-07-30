@@ -208,7 +208,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         } while (continueReading)
 
         // no more data to read, inform pipeline
-        pipeline().fireChannelReadComplete()
+        // pipeline().fireChannelReadComplete()
     }
 
     override fun doWrite(buffer: ChannelOutboundBuffer) {
