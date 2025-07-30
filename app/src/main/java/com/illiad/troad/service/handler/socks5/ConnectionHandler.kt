@@ -35,7 +35,6 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                 "TCP" -> Socks5CommandType.valueOf(1)
                 "UDP" -> Socks5CommandType.valueOf(3)
                 else -> {
-                    // ctx.fireExceptionCaught(Exception("Unknown protocol: ${connection.protocol}"))
                     return@launch
                 }
             }
@@ -44,7 +43,6 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                 4 -> Socks5AddressType.valueOf(1)
                 6 -> Socks5AddressType.valueOf(4)
                 else -> {
-                    // ctx.fireExceptionCaught(Exception("Unknown IP version: ${connection.ipVersion}"))
                     return@launch
                 }
             }
@@ -92,35 +90,20 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                                         .channel().writeAndFlush(request)
                                         .addListener(ChannelFutureListener { future2: ChannelFuture? ->
                                             if (!future2!!.isSuccess) {
-                                                // do not fire exception for exceptions on individual out-going channels
-                                                // ctx.fireExceptionCaught(Exception(future2.cause()))
                                                 closeOnFlush(ch)
-                                                // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
-                                                //closeOnFlush(ctx.channel())
                                             }
                                         })
                                 } else {
-                                    // do not fire exception for exceptions on individual out-going channels
-                                    // ctx.fireExceptionCaught(Exception(future1.cause()))
                                     closeOnFlush(ch)
-                                    // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
-                                    //closeOnFlush(ctx.channel())
                                 }
                             })
                     } else {
-                        // do not fire exception for exceptions on individual out-going channels
-                        // ctx.fireExceptionCaught(future.cause())
                         closeOnFlush(future.channel())
-                        // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
-                        //closeOnFlush(ctx.channel())
+
                     }
                 })
         }
         ctx.pipeline().remove(this)
     }
 
-    override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable?) {
-        closeOnFlush(ctx.channel())
-        ctx.fireExceptionCaught(cause)
-    }
 }
