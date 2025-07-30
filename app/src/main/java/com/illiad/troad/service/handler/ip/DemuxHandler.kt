@@ -75,8 +75,17 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         println("${this.javaClass.simpleName} caught exception: $cause")
-        // Decide: handle it, or pass it on
+        //TODO: Decide: handle it, or pass it on
         ctx.fireExceptionCaught(cause) // Pass to next handler in the pipeline
+        ctx.channel().close().addListener { future ->
+            {
+                if (future.isSuccess) {
+                    println("Channel closed successfully")
+                } else {
+                    println("Failed to close channel: ${future.cause()}")
+                }
+            }
+        }
     }
 
 }
