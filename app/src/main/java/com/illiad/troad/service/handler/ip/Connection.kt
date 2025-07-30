@@ -9,8 +9,8 @@ import org.pcap4j.packet.Packet // For the most generic packet object
 import java.net.InetAddress
 
 data class Connection(
-    val sourceAddress: InetAddress,
-    val destinationAddress: InetAddress,
+    val sourceAddress: String,
+    val destinationAddress: String,
     val sourcePort: Int?, // Nullable if not TCP or UDP
     val destinationPort: Int?, // Nullable if not TCP or UDP
     val protocol: String, // e.g., "TCP", "UDP", "ICMP", or IP protocol number as string
@@ -91,8 +91,8 @@ data class Connection(
             }
 
             return Connection(
-                sourceAddress = sourceAddress,
-                destinationAddress = destinationAddress,
+                sourceAddress = sourceAddress.hostAddress,
+                destinationAddress = destinationAddress.hostAddress,
                 sourcePort = sourcePort,
                 destinationPort = destinationPort,
                 protocol = protocolName,
