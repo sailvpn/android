@@ -72,4 +72,11 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
             }
         }
     }
+
+    override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
+        println("${this.javaClass.simpleName} caught exception: $cause")
+        // Decide: handle it, or pass it on
+        ctx.fireExceptionCaught(cause) // Pass to next handler in the pipeline
+    }
+
 }
