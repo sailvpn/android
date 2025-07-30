@@ -10,6 +10,7 @@ import com.illiad.troad.service.Utils.serverDomain
 import com.illiad.troad.service.Utils.serverPort
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.*
+import io.netty.channel.nio.NioIoHandler
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.socksx.v5.DefaultSocks5CommandRequest
@@ -17,92 +18,105 @@ import io.netty.handler.codec.socksx.v5.Socks5AddressType
 import io.netty.handler.codec.socksx.v5.Socks5CommandType
 import io.netty.util.concurrent.GenericFutureListener
 import io.netty.util.concurrent.Future
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
-    private val b = Bootstrap()
+
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     public override fun channelRead0(ctx: ChannelHandlerContext, connection: Connection) {
-        val commandType = when (connection.protocol) {
-            "TCP" -> Socks5CommandType.valueOf(1)
-            "UDP" -> Socks5CommandType.valueOf(3)
-            else -> {
-                ctx.fireExceptionCaught(Exception("Unknown protocol: ${connection.protocol}"))
-                return
-            }
-        }
 
-        val aType = when (connection.ipVersion) {
-            4 -> Socks5AddressType.valueOf(1)
-            6 -> Socks5AddressType.valueOf(4)
-            else -> {
-                ctx.fireExceptionCaught(Exception("Unknown IP version: ${connection.ipVersion}"))
-                return
-            }
-        }
-        val request = DefaultSocks5CommandRequest(
-            commandType,
-            aType,
-            connection.destinationAddress.toString(),
-            connection.destinationPort!!
-        )
-        b.group(ctx.channel().eventLoop()).channel(NioSocketChannel::class.java)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .handler(object : ChannelInitializer<SocketChannel?>() {
-                override fun initChannel(sc: SocketChannel?) {}
-            }) // connect to the proxy server, and forward the Socks connect command message to the remote server
-            .connect(serverDomain, serverPort)
-            .addListener(ChannelFutureListener { future: ChannelFuture? ->
-                if (future!!.isSuccess) {
-                    val ch = future.channel()
-                    //val sslHandler = Ssl.sslCtx!!.newHandler(
-                    //    ch.alloc(),
-                    //    serverDomain,
-                    //    serverPort
-                    //)
-                    // this is for testing only, do not use in production
-                    val sslHandler = Ssl.createInsecureSslContext().newHandler(
-                        ch.alloc(),
-                        serverDomain,
-                        serverPort
-                    )
-                    val pipeline = ch.pipeline()
-                    pipeline.addLast(sslHandler)
-                    // Add a listener for the SSL handshake
-                    sslHandler.handshakeFuture()
-                        .addListener(GenericFutureListener { future1: Future<in Channel?>? ->
-                            if (future1!!.isSuccess) {
-                                // backend outbound encoder: standard socks5 command request (Connect or UdP)
-                                pipeline.addLast(HandlerNamer.name, V5ClientEncoder)
-                                    // backend inbound decoder: socks5 client decoder
-                                    .addLast(HandlerNamer.name, V5ClientDecoder())
-                                    .addLast(HandlerNamer.name, AckHandler(ctx, connection))
-                                    .channel().writeAndFlush(request)
-                                    .addListener(ChannelFutureListener { future2: ChannelFuture? ->
-                                        if (!future2!!.isSuccess) {
-                                            // do not fire exception for exceptions on individual out-going channels
-                                            // ctx.fireExceptionCaught(Exception(future2.cause()))
-                                            closeOnFlush(ch)
-                                            // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
-                                            //closeOnFlush(ctx.channel())
-                                        }
-                                    })
-                            } else {
-                                // do not fire exception for exceptions on individual out-going channels
-                                // ctx.fireExceptionCaught(Exception(future1.cause()))
-                                closeOnFlush(ch)
-                                // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
-                                //closeOnFlush(ctx.channel())
-                            }
-                        })
-                } else {
-                    // do not fire exception for exceptions on individual out-going channels
-                    // ctx.fireExceptionCaught(future.cause())
-                    closeOnFlush(future.channel())
-                    // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
-                    //closeOnFlush(ctx.channel())
+        serviceScope.launch {
+            val commandType = when (connection.protocol) {
+                "TCP" -> Socks5CommandType.valueOf(1)
+                "UDP" -> Socks5CommandType.valueOf(3)
+                else -> {
+                    // ctx.fireExceptionCaught(Exception("Unknown protocol: ${connection.protocol}"))
+                    return@launch
                 }
-            })
+            }
+
+            val aType = when (connection.ipVersion) {
+                4 -> Socks5AddressType.valueOf(1)
+                6 -> Socks5AddressType.valueOf(4)
+                else -> {
+                    // ctx.fireExceptionCaught(Exception("Unknown IP version: ${connection.ipVersion}"))
+                    return@launch
+                }
+            }
+            val request = DefaultSocks5CommandRequest(
+                commandType,
+                aType,
+                connection.destinationAddress,
+                connection.destinationPort!!
+            )
+
+            val b = Bootstrap()
+            val group = MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
+            b.group(group).channel(NioSocketChannel::class.java)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+                .option(ChannelOption.SO_KEEPALIVE, true)
+                .handler(object : ChannelInitializer<SocketChannel?>() {
+                    override fun initChannel(sc: SocketChannel?) {}
+                }) // connect to the proxy server, and forward the Socks connect command message to the remote server
+                .connect(serverDomain, serverPort)
+                .addListener(ChannelFutureListener { future: ChannelFuture? ->
+                    if (future!!.isSuccess) {
+                        val ch = future.channel()
+                        //val sslHandler = Ssl.sslCtx!!.newHandler(
+                        //    ch.alloc(),
+                        //    serverDomain,
+                        //    serverPort
+                        //)
+                        // this is for testing only, do not use in production
+                        val sslHandler = Ssl.createInsecureSslContext().newHandler(
+                            ch.alloc(),
+                            serverDomain,
+                            serverPort
+                        )
+                        val pipeline = ch.pipeline()
+                        pipeline.addLast(sslHandler)
+                        // Add a listener for the SSL handshake
+                        sslHandler.handshakeFuture()
+                            .addListener(GenericFutureListener { future1: Future<in Channel?>? ->
+                                if (future1!!.isSuccess) {
+                                    // backend outbound encoder: standard socks5 command request (Connect or UdP)
+                                    pipeline.addLast(HandlerNamer.name, V5ClientEncoder)
+                                        // backend inbound decoder: socks5 client decoder
+                                        .addLast(HandlerNamer.name, V5ClientDecoder())
+                                        .addLast(HandlerNamer.name, AckHandler(ctx, connection))
+                                        .channel().writeAndFlush(request)
+                                        .addListener(ChannelFutureListener { future2: ChannelFuture? ->
+                                            if (!future2!!.isSuccess) {
+                                                // do not fire exception for exceptions on individual out-going channels
+                                                // ctx.fireExceptionCaught(Exception(future2.cause()))
+                                                closeOnFlush(ch)
+                                                // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
+                                                //closeOnFlush(ctx.channel())
+                                            }
+                                        })
+                                } else {
+                                    // do not fire exception for exceptions on individual out-going channels
+                                    // ctx.fireExceptionCaught(Exception(future1.cause()))
+                                    closeOnFlush(ch)
+                                    // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
+                                    //closeOnFlush(ctx.channel())
+                                }
+                            })
+                    } else {
+                        // do not fire exception for exceptions on individual out-going channels
+                        // ctx.fireExceptionCaught(future.cause())
+                        closeOnFlush(future.channel())
+                        // do we really need to close ctx.channel here? this is the local connection to fileDescriptor
+                        //closeOnFlush(ctx.channel())
+                    }
+                })
+        }
+        ctx.pipeline().remove(this)
     }
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable?) {
