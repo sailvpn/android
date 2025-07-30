@@ -11,7 +11,7 @@ class FildesChannelConfig(channel: FildesChannel) : DefaultChannelConfig(channel
         // Sensible defaults for a file-like channel
         setAllocator(ByteBufAllocator.DEFAULT) // Or a specific one if needed
         setRecvByteBufAllocator(AdaptiveRecvByteBufAllocator.DEFAULT)
-        setAutoRead(true) // Common default
+        setAutoRead(false) // Not auto-read by default
         // Other options can be set here or exposed via setters
     }
 
