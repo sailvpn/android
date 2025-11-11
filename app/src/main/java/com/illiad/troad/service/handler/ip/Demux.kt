@@ -6,13 +6,9 @@ import org.pcap4j.packet.IpPacket
 object Demux {
     private val pool: MutableList<Session> = mutableListOf()
 
-    fun addSession(session: Session) {
-        pool.add(session)
-    }
-
     fun getSession(channel: Channel): Session? {
 
-        return pool.find { it.channel?.id()?.asShortText() == channel.id().asShortText() }
+        return pool.find { it.channel?.id() == channel.id() }
     }
 
     fun getSession(connection: Connection): Session? {
@@ -22,7 +18,7 @@ object Demux {
     // should only create by connection,
     // always check if session already exists before creating
     fun createSession(connection: Connection): Session {
-        var session = Session(null, connection)
+        val session = Session(connection)
         pool.add(session)
         return session
     }
@@ -32,7 +28,7 @@ object Demux {
         val it = pool.iterator()
         while (it.hasNext()) {
             val session = it.next()
-            if (session.channel?.id()?.asShortText() == channel.id().asShortText()) {
+            if (session.channel?.id() == channel.id()) {
                 it.remove()
                 return true
             }
@@ -52,7 +48,7 @@ object Demux {
         return false
     }
 
-    fun getPacket(channel: Channel): IpPacket? {
+    fun getPacket(channel: Channel): Any? {
         val session = getSession(channel)
         if (session != null) {
             return session.getPacket()
