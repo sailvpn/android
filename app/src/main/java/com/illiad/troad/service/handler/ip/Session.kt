@@ -1,48 +1,49 @@
 package com.illiad.troad.service.handler.ip
 
 import io.netty.channel.Channel
-import org.pcap4j.packet.IpPacket
 
-data class Session(
+data class Session(val connection: Connection) {
     @Volatile
-    var channel: Channel? = null,
-    @Volatile
-    var connection: Connection? = null
-) {
+    var channel: Channel? = null
+    var aso: Channel? = null
+    val lock = Any()
 
-    val buffer: MutableList<IpPacket> = mutableListOf()
+    val buffer: MutableList<Any> = mutableListOf()
 
-    fun setSessionChannel(channel: Channel?) {
+    fun setSessionChannel(channel: Channel) {
         this.channel = channel
     }
 
-    fun setSessionConnection(connection: Connection?) {
-        this.connection = connection
-    }
-
     fun isActive(): Boolean {
-        return channel?.isActive ?: false
+        return channel != null && channel!!.isActive
     }
 
-    fun writeAndFlush(packet: IpPacket) {
-        channel?.writeAndFlush(packet)
+    fun writeAndFlush(packet: Any) {
+        channel!!.writeAndFlush(packet)
     }
 
     fun close() {
         channel?.close()
+        aso?.close()
     }
 
-    fun addPacket(packet: IpPacket) {
-        buffer.add(packet)
+    fun addPacket(packet: Any) {
+        synchronized(lock) {
+            buffer.add(packet)
+        }
     }
 
-    fun getPacket(): IpPacket? {
-        return if (buffer.size > 0) buffer.removeAt(0) else null
+    fun getPacket(): Any? {
+        synchronized(lock) {
+            return if (buffer.isNotEmpty()) buffer.removeAt(0) else null
+        }
 
     }
 
     fun isBufferEmpty(): Boolean {
-        return buffer.isEmpty()
+        synchronized(lock) {
+            return buffer.isEmpty()
+        }
     }
 
 }
