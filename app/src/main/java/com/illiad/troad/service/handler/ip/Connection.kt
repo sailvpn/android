@@ -6,15 +6,19 @@ import org.pcap4j.packet.IpV6Packet
 import org.pcap4j.packet.TcpPacket
 import org.pcap4j.packet.UdpPacket
 import org.pcap4j.packet.Packet // For the most generic packet object
+import org.pcap4j.packet.namednumber.IpNumber
+import org.pcap4j.packet.namednumber.IpNumber.TCP
+import org.pcap4j.packet.namednumber.IpNumber.UDP
+
 import java.net.InetAddress
 
-data class Connection(
-    val sourceAddress: String,
-    val destinationAddress: String,
-    val sourcePort: Int?, // Nullable if not TCP or UDP
-    val destinationPort: Int?, // Nullable if not TCP or UDP
-    val protocol: String, // e.g., "TCP", "UDP", "ICMP", or IP protocol number as string
-    val ipVersion: Int // 4 or 6
+class Connection(
+    val ipVersion: Int, // 4 or 6
+    val protocol: IpNumber, // e.g., "TCP", "UDP", "ICMP", or IP protocol number as string
+    val src: InetAddress,
+    val srcPort: Int, // Nullable if not TCP or UDP
+    val dst: InetAddress,
+    val dstPort: Int // Nullable if not TCP or UDP
 ) {
 
     // equal() and hashCode() are automatically generated for data classes
@@ -32,7 +36,6 @@ data class Connection(
             }
 
             if (ipPacket == null) {
-                println("Packet does not contain an IP layer.")
                 return null
             }
 
@@ -55,18 +58,18 @@ data class Connection(
             }
             // If determinedIpVersion is 0 here, you might want to return null or throw
             if (determinedIpVersion == 0) {
-                println("Could not reliably determine IP version for packet.")
                 return null
             }
 
-            val sourceAddress: InetAddress = ipPacket.header.srcAddr
-            val destinationAddress: InetAddress = ipPacket.header.dstAddr
+            val protocol = when (packet) {
+                is IpV4Packet -> packet.header.protocol
+                is IpV6Packet -> packet.header.nextHeader
+                else -> null
+            }
+
+
             var sourcePort: Int? = null
             var destinationPort: Int? = null
-            // Get protocol name (e.g., TCP, UDP) or number if name is not standard
-            var protocolName: String =
-                ipPacket.header.protocol.name() ?: ipPacket.header.protocol.value().toString()
-
 
             // Check for TCP Packet
             if (ipPacket.payload is TcpPacket) {
@@ -87,16 +90,16 @@ data class Connection(
             else {
                 // For protocols like ICMP, sourcePort and destinationPort will remain null.
                 // protocolName is already set from the IP header.
-                println("IP packet payload is not TCP or UDP. Protocol: ${ipPacket.header.protocol} (Name: $protocolName)")
+                println("IP packet payload is not TCP or UDP. Protocol: ${ipPacket.header.protocol} (Name: $ipPacket.header.protocol)")
             }
 
             return Connection(
-                sourceAddress = sourceAddress.hostAddress,
-                destinationAddress = destinationAddress.hostAddress,
-                sourcePort = sourcePort,
-                destinationPort = destinationPort,
-                protocol = protocolName,
-                ipVersion = determinedIpVersion
+                ipVersion = determinedIpVersion,
+                protocol = protocol ?: ipPacket.header.protocol,
+                src = ipPacket.header.srcAddr,
+                srcPort = sourcePort ?: 0,
+                dst = ipPacket.header.dstAddr,
+                dstPort = destinationPort ?: 0
             )
         }
     }
@@ -136,5 +139,33 @@ data class Connection(
     }
     */
 // }
+
+    override fun equals(other: Any?): Boolean {
+        var eql = false
+        if (other is Connection) {
+            if (protocol == TCP && src == other.src &&
+                dst == other.dst &&
+                srcPort == other.srcPort &&
+                dstPort == other.dstPort
+            ) {
+                eql = true
+            } else if (protocol == UDP && src == other.src &&
+                srcPort == other.srcPort
+            ) {
+                eql = true
+            }
+        }
+        return eql
+    }
+
+    override fun hashCode(): Int {
+        var result = ipVersion
+        result = 31 * result + srcPort
+        result = 31 * result + dstPort
+        result = 31 * result + protocol.hashCode()
+        result = 31 * result + src.hashCode()
+        result = 31 * result + dst.hashCode()
+        return result
+    }
 
 }
