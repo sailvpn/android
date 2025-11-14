@@ -11,7 +11,7 @@ import javax.net.ssl.TrustManagerFactory
 
 object Dtls {
     // This will hold the configured DTLS context for Netty.
-    var dtlsCtx: SslContext? = null
+    var dtlsCtx: SslContext? = null // <-- Correct type is io.netty.handler.ssl.SslContext
         private set // Make the setter private so it can only be set from within this object.
 
     // A flag to ensure initialization happens only once.
@@ -36,9 +36,10 @@ object Dtls {
                 val keyStoreType =
                     context.getString(R.string.trust_store_type) // e.g., "BKS" or "PKCS12"
 
-                // 2. Load the KeyStore.
+                // 2. Load the KeyStore (for client identity).
                 // The KeyStore should contain your client's certificate and private key.
                 val ks = KeyStore.getInstance(keyStoreType)
+                // IMPORTANT: Use a specific client keystore file, not the server one.
                 context.resources.openRawResource(R.raw.server).use { inputStream ->
                     ks.load(inputStream, keyStorePassword.toCharArray())
                 }
@@ -48,9 +49,10 @@ object Dtls {
                 val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
                 kmf.init(ks, keyStorePassword.toCharArray())
 
-                // 4. Load the TrustStore.
-                // The TrustStore should contain the server's CA certificate to verify its identity.
+                // 4. Load the TrustStore (to verify the server).
+                // The TrustStore should contain the server's CA certificate.
                 val ts = KeyStore.getInstance(keyStoreType)
+                // IMPORTANT: Use a specific server truststore file.
                 context.resources.openRawResource(R.raw.server).use { inputStream ->
                     ts.load(inputStream, keyStorePassword.toCharArray())
                 }
@@ -59,22 +61,25 @@ object Dtls {
                 val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
                 tmf.init(ts)
 
-                // 6. Build the Netty SslContext for DTLS.
+                // 6. Build the Netty SslContext. Netty will automatically use DTLS
+                //    when this context is used with a DatagramChannel.
                 dtlsCtx = SslContextBuilder.forClient()
-                    .keyManager(kmf)         // Set your client's identity
-                    .trustManager(tmf)       // Set who you trust
-                    // .protocols("DTLSv1.2") // Optionally specify DTLS version
-                    .build()
+                    .keyManager(kmf)         // Identifies this client
+                    .trustManager(tmf)       // Verifies the server
+                    .build()                 // Build the SslContext object
 
                 isInitialized = true
+                Log.i("Dtls", "DTLS context initialized successfully.")
 
             } catch (e: Exception) {
                 // Log the error. Initialization failed, dtlsCtx will remain null.
-                // Consider a more robust error handling strategy for production.
                 Log.e("Dtls", "Failed to initialize DTLS context", e)
             }
         }
     }
 }
+
+
+
 
 
