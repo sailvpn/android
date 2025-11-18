@@ -2,7 +2,6 @@ package com.illiad.troad.service.handler.socks5
 
 import com.illiad.troad.service.HandlerNamer
 import com.illiad.troad.service.Utils.closeOnFlush
-import com.illiad.troad.service.codec.ip.PacketEncoder
 import com.illiad.troad.service.handler.ip.Connection
 import com.illiad.troad.service.handler.ip.Demux
 import io.netty.channel.ChannelHandlerContext
@@ -25,7 +24,7 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
             val backend = ctx.channel()!!
             val backendPipeline = backend.pipeline()
             // setup ip handlers for backend
-            backendPipeline.addLast(PacketEncoder).addLast(RelayHandler(frontendCtx.channel()))
+            backendPipeline.addLast(RelayHandler(frontendCtx.channel()))
             val prefix: String = HandlerNamer.prefix
             // remove all handlers except SslHandler from backendPipeline
             for (name in backendPipeline.names()) {
@@ -35,26 +34,24 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
             }
 
             // associate backend channel with connection, now that it is established
-            val session = Demux.getSession(connection);
+            val session = Demux.getSession(connection)
             if (session != null) {
-                session.setSessionChannel(backend)
+                session.channel = backend
                 // forward the first packet to the backend
-                if(session.isBufferEmpty() != true){
-                    session.writeAndFlush(session.getPacket()!!)
+                if(!session.isBufferEmpty()){
+                    backend.writeAndFlush(session.getPacket()!!)
                 }
             } else {
                 // this actually should never have happend
                 // we should never close frontend(Demux)here,
                 // we just close the backend which is an individual session
                 Demux.removeSession(connection)
-                closeOnFlush(ctx.channel()!!)
             }
 
         } else {
             // we should never close frontend(Demux)here,
             // we just close the backend which is an individual session
             Demux.removeSession(connection)
-            closeOnFlush(ctx.channel()!!)
         }
     }
 
