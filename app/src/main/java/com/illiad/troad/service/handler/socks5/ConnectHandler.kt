@@ -8,6 +8,7 @@ import com.illiad.troad.service.handler.ip.Connection
 import com.illiad.troad.service.security.Ssl
 import com.illiad.troad.service.Utils.serverDomain
 import com.illiad.troad.service.Utils.serverPort
+import com.illiad.troad.service.handler.ip.Demux
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.*
 import io.netty.channel.nio.NioIoHandler
@@ -23,7 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
+class ConnectHandler() : SimpleChannelInboundHandler<Connection>() {
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
@@ -31,13 +32,6 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
     public override fun channelRead0(ctx: ChannelHandlerContext, connection: Connection) {
 
         serviceScope.launch {
-            val commandType = when (connection.protocol) {
-                "TCP" -> Socks5CommandType.valueOf(1)
-                "UDP" -> Socks5CommandType.valueOf(3)
-                else -> {
-                    return@launch
-                }
-            }
 
             val aType = when (connection.ipVersion) {
                 4 -> Socks5AddressType.valueOf(1)
@@ -47,10 +41,10 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                 }
             }
             val request = DefaultSocks5CommandRequest(
-                commandType,
+                Socks5CommandType.CONNECT,
                 aType,
-                connection.destinationAddress,
-                connection.destinationPort!!
+                connection.dst.hostAddress,
+                connection.dstPort
             )
 
             val b = Bootstrap()
@@ -65,17 +59,12 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                 .addListener(ChannelFutureListener { future: ChannelFuture? ->
                     if (future!!.isSuccess) {
                         val ch = future.channel()
-                        //val sslHandler = Ssl.sslCtx!!.newHandler(
-                        //    ch.alloc(),
-                        //    serverDomain,
-                        //    serverPort
-                        //)
-                        // this is for testing only, do not use in production
-                        val sslHandler = Ssl.createInsecureSslContext().newHandler(
+                        val sslHandler = Ssl.sslCtx!!.newHandler(
                             ch.alloc(),
                             serverDomain,
                             serverPort
                         )
+
                         val pipeline = ch.pipeline()
                         pipeline.addLast(sslHandler)
                         // Add a listener for the SSL handshake
@@ -90,15 +79,15 @@ class ConnectionHandler() : SimpleChannelInboundHandler<Connection>() {
                                         .channel().writeAndFlush(request)
                                         .addListener(ChannelFutureListener { future2: ChannelFuture? ->
                                             if (!future2!!.isSuccess) {
-                                                closeOnFlush(ch)
+                                                Demux.removeSession(connection)
                                             }
                                         })
                                 } else {
-                                    closeOnFlush(ch)
+                                    Demux.removeSession(connection)
                                 }
                             })
                     } else {
-                        closeOnFlush(future.channel())
+                        Demux.removeSession(connection)
 
                     }
                 })
