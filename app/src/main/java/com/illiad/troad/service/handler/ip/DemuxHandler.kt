@@ -1,8 +1,8 @@
 package com.illiad.troad.service.handler.ip
 
 import com.illiad.troad.service.HandlerNamer
-import com.illiad.troad.service.handler.socks5.TcpHandler
-import com.illiad.troad.service.handler.socks5.UdpHandler
+import com.illiad.troad.service.handler.socks5.ConnectHandler
+import com.illiad.troad.service.handler.socks5.udp.AsoHandler
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
@@ -29,7 +29,7 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
             val connection = Connection.extractConnetion(packet)
             if (connection != null) {
 
-                val protocol = connection
+                val protocol = connection.protocol
                 // Filter out any packets that are not TCP or UDP.
                 if (protocol != IpNumber.TCP && protocol != IpNumber.UDP) {
                     // You can add logging here if you want to see what's being dropped.
@@ -99,10 +99,10 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
                     if (session.channel == null) {
                         // null channel, establish channel
                         if (protocol == IpNumber.TCP) {
-                            ctx.pipeline()?.addLast(HandlerNamer.name, TcpHandler())
+                            ctx.pipeline()?.addLast(HandlerNamer.name, ConnectHandler())
                         } else {
                             // UDP
-                            ctx.pipeline().addLast(HandlerNamer.name, UdpHandler())
+                            ctx.pipeline().addLast(HandlerNamer.name, AsoHandler())
                         }
                         ctx.fireChannelRead(connection)
 
