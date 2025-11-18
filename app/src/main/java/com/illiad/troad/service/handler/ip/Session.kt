@@ -10,10 +10,6 @@ data class Session(val connection: Connection) {
 
     val buffer: MutableList<Any> = mutableListOf()
 
-    fun setSessionChannel(channel: Channel) {
-        this.channel = channel
-    }
-
     fun isActive(): Boolean {
         return channel != null && channel!!.isActive
     }
