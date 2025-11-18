@@ -18,15 +18,14 @@ class RelayHandler(private val vpn: Channel) : SimpleChannelInboundHandler<ByteB
             return
         }
 
-        if (vpn.isActive != true) {
+        if (!vpn.isActive) {
             // Vpn is not running
+            // Close the backend connection as we can't process its data
             Demux.removeSession(ctx.channel())
-            ctx.close() // Close the client connection as we can't process its data
             return
         }
 
-        val readableBytes = byteBuf.readableBytes()
-        if (readableBytes == 0) {
+        if (byteBuf.readableBytes() == 0) {
             return
         }
 
@@ -35,16 +34,16 @@ class RelayHandler(private val vpn: Channel) : SimpleChannelInboundHandler<ByteB
 
         val session = Demux.getSession(ctx.channel())
         // check for remaining packet in the session buffer
-        if (session!!.isBufferEmpty() != true) {
+        if (session?.isBufferEmpty() != true) {
             // forward one packet from the buffer to destination
-            session.writeAndFlush(session.getPacket()!!)
+            ctx.channel().writeAndFlush(session?.getPacket())
         }
 
     }
 
     override fun channelInactive(ctx: ChannelHandlerContext) {
-        Demux.removeSession(ctx.channel())
         ctx.fireChannelInactive()
+        Demux.removeSession(ctx.channel())
     }
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
