@@ -1,7 +1,10 @@
 package com.illiad.troad.service.handler.ip
 
+import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
-import org.pcap4j.packet.IpPacket
+import io.netty.channel.ChannelFutureListener
+import io.netty.util.ReferenceCountUtil
+import io.netty.util.ReferenceCounted
 
 object Demux {
     private val pool: MutableList<Session> = mutableListOf()
@@ -29,6 +32,18 @@ object Demux {
         while (it.hasNext()) {
             val session = it.next()
             if (session.channel?.id() == channel.id()) {
+                if (session.aso?.isActive == true) {
+                    session.aso?.writeAndFlush(Unpooled.EMPTY_BUFFER)?.addListener(ChannelFutureListener.CLOSE)
+                }
+                if (session.channel?.isActive == true) {
+                    session.channel?.writeAndFlush(Unpooled.EMPTY_BUFFER)?.addListener(ChannelFutureListener.CLOSE)
+                }
+                for (packet in session.buffer) {
+                    if (packet is ReferenceCounted) {
+                        ReferenceCountUtil.release(packet)
+                    }
+                }
+                session.buffer.clear()
                 it.remove()
                 return true
             }
@@ -41,21 +56,24 @@ object Demux {
         while (it.hasNext()) {
             val session = it.next()
             if (session.connection == connection) {
+                if (session.aso?.isActive == true) {
+                    session.aso?.writeAndFlush(Unpooled.EMPTY_BUFFER)?.addListener(ChannelFutureListener.CLOSE)
+                }
+                if (session.channel?.isActive == true) {
+                    session.channel?.writeAndFlush(Unpooled.EMPTY_BUFFER)?.addListener(ChannelFutureListener.CLOSE)
+                }
+                for (packet in session.buffer) {
+                    if (packet is ReferenceCounted) {
+                        ReferenceCountUtil.release(packet)
+                    }
+                }
+                session.buffer.clear()
                 it.remove()
                 return true
             }
         }
         return false
     }
-
-    fun getPacket(channel: Channel): Any? {
-        val session = getSession(channel)
-        if (session != null) {
-            return session.getPacket()
-        }
-        return null
-    }
-
 
 }
 
