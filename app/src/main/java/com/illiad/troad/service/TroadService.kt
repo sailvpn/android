@@ -199,37 +199,47 @@ class TroadService : VpnService() {
     }
 
     private fun startVpn(fd: FileDescriptor) {
+        // 1. EventLoopGroup for FildesChannel (I/O reading from the VPN interface)
+        // A single-threaded executor is sufficient as it reads from one source (the FileDescriptor).
+        val ioGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
 
-        // Configure the bootstrap.
-        val group = MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
+        // 2. EventLoopGroup for PacketDecoder (CPU-intensive parsing)
+        // A separate group to handle the byte-to-packet decoding.
+        val decoderGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
+
+        // 3. EventLoopGroup for DemuxHandler (handles logic and outbound traffic)
+        // This can have more threads if the DemuxHandler itself performs concurrent outbound connections.
+        val demuxGroup = MultiThreadIoEventLoopGroup(3, NioIoHandler.newFactory())
+
         val b = Bootstrap()
         fildesChannel = FildesChannel(null, fd)
-        b.group(group).channelFactory(ChannelFactory { fildesChannel })
+
+        // Assign the primary I/O group to the bootstrap. This group will accept the connection.
+        b.group(ioGroup)
+            .channelFactory { fildesChannel } // Use lambda syntax for ChannelFactory
             .handler(object : ChannelInitializer<FildesChannel>() {
-                override fun initChannel(ch: FildesChannel?) {
-                    ch!!.pipeline()
-                        .addLast(PacketDecoder())
-                        .addLast(DemuxHandler)
+                override fun initChannel(ch: FildesChannel) { // Use non-nullable type
+                    ch.pipeline()
+                        // The PacketDecoder will run on the dedicated 'decoderGroup'.
+                        .addLast(decoderGroup, PacketDecoder())
+                        // The DemuxHandler will run on its own 'demuxGroup'.
+                        .addLast(demuxGroup, DemuxHandler)
                 }
             })
+
         val fildesAddress = FildesAddress(fd)
         b.connect(fildesAddress, fildesAddress)
             .addListener { future ->
-                {
-                    if (future.isSuccess) {
-                        Log.i(TAG, "VPN connection established.")
-                        broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
-                    } else {
-                        sendBroadcast(
-                            Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
-                                "status", "VPN connection failed"
-                            )
-                        )
-                        future.cause().printStackTrace()
-                    }
+                if (future.isSuccess) {
+                    Log.i(TAG, "VPN connection established.")
+                    broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
+                } else {
+                    Log.e(TAG, "VPN connection failed", future.cause())
+                    broadcastVpnStatus("VPN connection failed", false)
+                    // Clean up resources if the connection fails at startup.
+                    stopVpn()
                 }
             }
-
     }
 
     /**
