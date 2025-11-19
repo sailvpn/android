@@ -16,8 +16,8 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
     override fun channelRead0(ctx: ChannelHandlerContext?, response: Socks5CommandResponse?) {
 
         if (ctx == null || response == null) {
-            Demux.removeSession(connection)
             closeOnFlush(ctx?.channel()!!)
+            Demux.removeSession(connection)
             return
         }
         if (response.status() == Socks5CommandStatus.SUCCESS) {
