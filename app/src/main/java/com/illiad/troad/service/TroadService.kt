@@ -37,7 +37,6 @@ import com.illiad.troad.service.channel.FildesChannel
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
 import io.netty.bootstrap.Bootstrap
-import io.netty.channel.ChannelFactory
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.MultiThreadIoEventLoopGroup
 import io.netty.channel.nio.NioIoHandler
@@ -47,35 +46,59 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.FileDescriptor
 
+/**
+ * A [VpnService] that manages the VPN connection for the Troad application.
+ *
+ * This service is responsible for:
+ * - Establishing and configuring the VPN tunnel.
+ * - Handling the lifecycle of the VPN connection (start, stop).
+ * - Managing a persistent notification to keep the service in the foreground.
+ * - Reading and writing IP packets to the VPN interface using Netty.
+ * - Broadcasting the VPN connection status to other parts of the app.
+ */
 class TroadService : VpnService() {
 
+    /** A [SupervisorJob] for managing coroutines within the service, allowing child coroutines to fail without canceling the entire scope. */
     private val serviceJob = SupervisorJob()
+    /** The [CoroutineScope] for launching background tasks, using an IO dispatcher for network and file operations. */
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    /** The [ParcelFileDescriptor] for the VPN tunnel interface provided by the Android system. Null if the VPN is not prepared or has been shut down. */
     private var vpnInterface: ParcelFileDescriptor? = null
+    /** The custom Netty [FildesChannel] used for reading from and writing to the VPN file descriptor. */
     private var fildesChannel: FildesChannel? = null
 
+    /**
+     * Called by the system when the service is first created.
+     * Initializes the notification channel.
+     */
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "VPN Service Created.")
         createNotificationChannel()
     }
 
+    /**
+     * Called by the system every time a client starts the service using [startService].
+     * Handles incoming intents to connect or disconnect the VPN.
+     *
+     * @param intent The Intent supplied to [startService], which contains the action to perform.
+     * @param flags Additional data about this start request.
+     * @param startId A unique integer representing this specific request to start.
+     * @return The return value indicates what semantics the system should use for the service's current started state.
+     */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand received: ${intent?.action}")
         when (intent?.action) {
             ACTION_CONNECT -> {
                 if (fildesChannel?.isActive == true) {
                     Log.d(TAG, "VPN already running.")
-                    // Optionally update notification or parameters if needed
                     return START_STICKY
                 }
-                // Retrieve parameters from the intent (if you pass them this way)
                 serverDomain = intent.getStringExtra(EXTRA_SERVER_ADDRESS)!!
                 serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 0)
                 sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
 
 
-                // Prepare the VPN connection
                 if (prepareVpn()) {
                     serviceScope.launch {
                         startVpn(vpnInterface?.fileDescriptor!!)
@@ -84,7 +107,7 @@ class TroadService : VpnService() {
                     Log.d(TAG, "VPN connection established.")
                 } else {
                     Log.e(TAG, "Failed to establish VPN connection.")
-                    stopVpn() // Clean up and stop
+                    stopVpn()
 
                 }
             }
@@ -99,21 +122,32 @@ class TroadService : VpnService() {
         return if (fildesChannel?.isActive == true) START_STICKY else START_NOT_STICKY
     }
 
-    private fun createNotificationChannel() { // Definition of your method
+    /**
+     * Creates the notification channel required for Android 8.0 (API 26) and above.
+     * This channel is used for the foreground service notification.
+     */
+    private fun createNotificationChannel() {
         val serviceChannel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
             NOTIFICATION_CHANNEL_NAME,
             NotificationManager.IMPORTANCE_DEFAULT
         )
         val manager = getSystemService(NotificationManager::class.java)
-        manager?.createNotificationChannel(serviceChannel) // Good to add null check for manager
+        manager?.createNotificationChannel(serviceChannel)
     }
 
+    /**
+     * Builds the persistent notification shown to the user while the VPN is active.
+     * The notification provides status information and an action to disconnect the VPN.
+     *
+     * @param contentText The text to display in the notification body.
+     * @return A configured [Notification] object.
+     */
     private fun createNotification(contentText: String): Notification {
         // Intent to open the app when the notification is tapped
         val openAppIntent = Intent(
             this, MainActivity::class.java
-        ).apply { // Replace MainActivity with your main activity
+        ).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val pendingOpenAppIntent = PendingIntent.getActivity(
@@ -135,14 +169,14 @@ class TroadService : VpnService() {
         )
 
         val notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.troy) // Replace with your VPN icon
-            .setContentTitle(getString(R.string.app_name) + " VPN") // App name + " VPN"
+            .setSmallIcon(R.drawable.troy)
+            .setContentTitle(getString(R.string.app_name) + " VPN")
             .setContentText(contentText)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Or PRIORITY_LOW for less intrusive
-            .setContentIntent(pendingOpenAppIntent) // Action on tap
-            .setOngoing(true) // Makes the notification non-dismissable by swiping
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingOpenAppIntent)
+            .setOngoing(true)
             .addAction(
-                R.drawable.cross, // Replace with your disconnect icon (optional)
+                R.drawable.cross,
                 "Disconnect", pendingDisconnectIntent
             )
         // .setPublicVersion(publicNotification) // For lock screen visibility control (optional)
@@ -155,26 +189,26 @@ class TroadService : VpnService() {
     }
 
 
+    /**
+     * Prepares and establishes the VPN interface.
+     * This method configures the VPN parameters like IP address, routes, DNS, and MTU using [VpnService.Builder].
+     * It requests user permission if this is the first time the VPN is being established.
+     *
+     * @return `true` if the VPN interface was established successfully, `false` otherwise.
+     */
     private fun prepareVpn(): Boolean {
 
         Log.d(TAG, "Preparing VPN interface at: $TUN_IP")
-        // --- This is a crucial part where you configure the VPN ---
         val builder = Builder()
-            // Configure IP address, routes, DNS servers, MTU, etc.
-            // These are examples and MUST be configured according to your VPN server setup.
-            .setSession(getString(R.string.app_name)) // Display name for the VPN session
-            .addAddress(TUN_IP, 24)      // VPN client's virtual IP
-            .addRoute("0.0.0.0", 0)          // Route all traffic through the VPN
-            .addDnsServer(DNS1).addDnsServer(DNS2) // Set MTU (adjust as needed)
-            //  .addAllowedApplication("com.example.anotherapp") // For per-app VPN (optional)
-            .addDisallowedApplication(packageName)           // Exclude this app (optional)
+            .setSession(getString(R.string.app_name))
+            .addAddress(TUN_IP, 24)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer(DNS1).addDnsServer(DNS2)
+            .addDisallowedApplication(packageName)
             .setMtu(MTU)
-        // Optional: Configure an intent to open your app's settings if needed before connection
-        // val configureIntent = Intent(this, YourVpnSettingsActivity::class.java)
-        // builder.setConfigureIntent(PendingIntent.getActivity(this, 0, configureIntent, PendingIntent.FLAG_IMMUTABLE))
 
         try {
-            vpnInterface = builder.establish() // This can return null if user denies permission
+            vpnInterface = builder.establish()
         } catch (e: Exception) {
             Log.e(TAG, "Error establishing VPN interface", e)
             sendBroadcast(
@@ -198,31 +232,30 @@ class TroadService : VpnService() {
         return true
     }
 
+    /**
+     * Initializes and starts the Netty pipeline to handle traffic from the VPN file descriptor.
+     *
+     * The pipeline consists of:
+     * - [FildesChannel]: Reads raw IP packets from the VPN interface.
+     * - [PacketDecoder]: Decodes the raw bytes into Pcap4j [Packet] objects.
+     * - [DemuxHandler]: Processes the decoded packets and manages data forwarding.
+     *
+     * @param fd The [FileDescriptor] of the established VPN interface.
+     */
     private fun startVpn(fd: FileDescriptor) {
-        // 1. EventLoopGroup for FildesChannel (I/O reading from the VPN interface)
-        // A single-threaded executor is sufficient as it reads from one source (the FileDescriptor).
         val ioGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
-
-        // 2. EventLoopGroup for PacketDecoder (CPU-intensive parsing)
-        // A separate group to handle the byte-to-packet decoding.
         val decoderGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
-
-        // 3. EventLoopGroup for DemuxHandler (handles logic and outbound traffic)
-        // This can have more threads if the DemuxHandler itself performs concurrent outbound connections.
         val demuxGroup = MultiThreadIoEventLoopGroup(3, NioIoHandler.newFactory())
 
         val b = Bootstrap()
         fildesChannel = FildesChannel(null, fd)
 
-        // Assign the primary I/O group to the bootstrap. This group will accept the connection.
         b.group(ioGroup)
-            .channelFactory { fildesChannel } // Use lambda syntax for ChannelFactory
+            .channelFactory { fildesChannel }
             .handler(object : ChannelInitializer<FildesChannel>() {
-                override fun initChannel(ch: FildesChannel) { // Use non-nullable type
+                override fun initChannel(ch: FildesChannel) {
                     ch.pipeline()
-                        // The PacketDecoder will run on the dedicated 'decoderGroup'.
                         .addLast(decoderGroup, PacketDecoder())
-                        // The DemuxHandler will run on its own 'demuxGroup'.
                         .addLast(demuxGroup, DemuxHandler)
                 }
             })
@@ -236,7 +269,6 @@ class TroadService : VpnService() {
                 } else {
                     Log.e(TAG, "VPN connection failed", future.cause())
                     broadcastVpnStatus("VPN connection failed", false)
-                    // Clean up resources if the connection fails at startup.
                     stopVpn()
                 }
             }
@@ -262,7 +294,7 @@ class TroadService : VpnService() {
         vpnInterface?.close()
         Log.i(TAG, "VPN Service stopped")
 
-        stopSelf() // Stop the service itself
+        stopSelf()
     }
 
     /**
@@ -280,19 +312,21 @@ class TroadService : VpnService() {
             // This prevents other apps from intercepting it.
             // setPackage(packageName)
         }
-        sendBroadcast(intent) // Sends a system-wide broadcast
+        sendBroadcast(intent)
         Log.d(TAG, "VPN status broadcast: '$message', Connected: $connected")
 
     }
 
+    /**
+     * Called by the system to notify a service that it is no longer used and is being removed.
+     * Cleans up resources, stops the foreground notification, and broadcasts the disconnected status.
+     */
     override fun onDestroy() {
         super.onDestroy()
 
         stopForeground(STOP_FOREGROUND_REMOVE)
-        broadcastVpnStatus("Disconnected", false) // Notify UI
+        broadcastVpnStatus("Disconnected", false)
         Log.i(TAG, "VPN Service Destroyed.")
-        // Ensure all resources are cleaned up if not already done.
-        // This is a final safeguard.
     }
 
 }
