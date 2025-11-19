@@ -40,6 +40,7 @@ import io.netty.bootstrap.Bootstrap
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.MultiThreadIoEventLoopGroup
 import io.netty.channel.nio.NioIoHandler
+import io.netty.util.concurrent.DefaultEventExecutorGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -244,8 +245,8 @@ class TroadService : VpnService() {
      */
     private fun startVpn(fd: FileDescriptor) {
         val ioGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
-        val decoderGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
-        val demuxGroup = MultiThreadIoEventLoopGroup(3, NioIoHandler.newFactory())
+        val decoderGroup = DefaultEventExecutorGroup(1)
+        val demuxGroup = DefaultEventExecutorGroup(3)
 
         val b = Bootstrap()
         fildesChannel = FildesChannel(null, fd)
@@ -307,10 +308,6 @@ class TroadService : VpnService() {
         val intent = Intent(ACTION_VPN_STATUS_BROADCAST).apply {
             putExtra(EXTRA_STATUS_MESSAGE, message)
             putExtra(EXTRA_IS_CONNECTED, connected)
-            // Optional: If this broadcast is only meant for components within your app,
-            // you can make it more secure and efficient by setting the package.
-            // This prevents other apps from intercepting it.
-            // setPackage(packageName)
         }
         sendBroadcast(intent)
         Log.d(TAG, "VPN status broadcast: '$message', Connected: $connected")
