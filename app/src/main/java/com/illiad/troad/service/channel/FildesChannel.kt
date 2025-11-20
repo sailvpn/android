@@ -134,7 +134,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
         // Essential if not done by unsafe().recvBufAllocHandle() for each "read cycle"
         allocHandle.reset(config())
 
-        var continueReading = false
+        var continueReading: Boolean
         // alloc byteBuf once per read cycle
         val byteBuf = allocHandle.allocate(config().allocator)
         do {
@@ -174,7 +174,7 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
                         pipeline().fireChannelReadComplete()
                     }, ZERO_READ_PAUSE_MS, TimeUnit.MILLISECONDS)
                     return // Exit doBeginRead without informing pipeline
-                } else if (bytesRead < 0) { // EOF
+                } else { // bytesRead < 0, EOF
                     allocHandle.lastBytesRead(-1) // Signal EOF to allocator
                     byteBuf.release()
                     shutdownInput().addListener { future ->
