@@ -13,14 +13,14 @@ import java.util.concurrent.ExecutionException
 class AckHandler(private val frontendCtx: ChannelHandlerContext, private val connection: Connection) :
     SimpleChannelInboundHandler<Socks5CommandResponse?>() {
     @Throws(ExecutionException::class, InterruptedException::class)
-    override fun channelRead0(ctx: ChannelHandlerContext?, response: Socks5CommandResponse?) {
+    override fun channelRead0(ctx: ChannelHandlerContext?, res: Socks5CommandResponse?) {
 
-        if (ctx == null || response == null) {
+        if (ctx == null || res == null) {
             closeOnFlush(ctx?.channel()!!)
             Demux.removeSession(connection)
             return
         }
-        if (response.status() == Socks5CommandStatus.SUCCESS) {
+        if (res.status() == Socks5CommandStatus.SUCCESS) {
             val backend = ctx.channel()!!
             val backendPipeline = backend.pipeline()
             // setup ip handlers for backend
