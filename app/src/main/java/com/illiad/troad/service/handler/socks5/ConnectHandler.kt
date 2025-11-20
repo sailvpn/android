@@ -1,7 +1,6 @@
 package com.illiad.troad.service.handler.socks5
 
 import com.illiad.troad.service.HandlerNamer
-import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.service.codec.socks5.V5ClientDecoder
 import com.illiad.troad.service.codec.socks5.V5ClientEncoder
 import com.illiad.troad.service.handler.ip.Connection
