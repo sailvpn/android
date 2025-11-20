@@ -2,14 +2,13 @@ package com.illiad.troad.service.handler.socks5.udp
 
 
 import com.illiad.troad.service.HandlerNamer
-import com.illiad.troad.service.Utils.closeOnFlush
 import com.illiad.troad.service.codec.socks5.V5ClientDecoder
 import com.illiad.troad.service.codec.socks5.V5ClientEncoder
 import com.illiad.troad.service.handler.ip.Connection
 import com.illiad.troad.service.security.Ssl
 import com.illiad.troad.service.Utils.serverDomain
 import com.illiad.troad.service.Utils.serverPort
-import com.illiad.troad.service.handler.socks5.AckHandler
+import com.illiad.troad.service.handler.ip.Demux
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.*
 import io.netty.channel.nio.NioIoHandler
@@ -62,7 +61,7 @@ class AsoHandler() : SimpleChannelInboundHandler<Connection>() {
                                     pipeline.addLast(HandlerNamer.name, V5ClientEncoder)
                                         // backend inbound decoder: socks5 client decoder
                                         .addLast(HandlerNamer.name, V5ClientDecoder())
-                                        .addLast(HandlerNamer.name, AsoAckHandler(ctx, connection))
+                                        .addLast(HandlerNamer.name, AsoAckHandler(connection))
                                         .channel().writeAndFlush(
                                             DefaultSocks5CommandRequest(
                                                 Socks5CommandType.UDP_ASSOCIATE,
@@ -72,15 +71,15 @@ class AsoHandler() : SimpleChannelInboundHandler<Connection>() {
                                         )
                                         .addListener(ChannelFutureListener { future2: ChannelFuture? ->
                                             if (!future2!!.isSuccess) {
-                                                closeOnFlush(ch)
+                                                Demux.removeSession(connection)
                                             }
                                         })
                                 } else {
-                                    closeOnFlush(ch)
+                                    Demux.removeSession(connection)
                                 }
                             })
                     } else {
-                        closeOnFlush(future.channel())
+                        Demux.removeSession(connection)
 
                     }
                 })
