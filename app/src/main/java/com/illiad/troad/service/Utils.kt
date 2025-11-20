@@ -2,6 +2,7 @@ package com.illiad.troad.service
 
 import android.content.res.Resources
 import android.os.ParcelFileDescriptor
+import com.illiad.troad.service.channel.FildesChannel
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFutureListener
@@ -16,6 +17,12 @@ object Utils {
     var serverPort: Int = 2080
     var sharedSecret: String = "sharedSecret"
 
+    /** The [ParcelFileDescriptor] for the VPN tunnel interface provided by the Android system. Null if the VPN is not prepared or has been shut down. */
+    var vpnInterface: ParcelFileDescriptor? = null
+
+    /** The custom Netty [FildesChannel] used for reading from and writing to the VPN file descriptor. */
+    var fildesChannel: FildesChannel? = null
+
     // resources getters
     private val rss: Resources = Resources.getSystem()
 
@@ -26,6 +33,8 @@ object Utils {
     fun getInt(id: Int): Int {
         return rss.getInteger(id)
     }
+
+
 
     /**
      * Closes the specified channel after all queued write requests are flushed.

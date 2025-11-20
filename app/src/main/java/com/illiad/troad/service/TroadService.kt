@@ -7,7 +7,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.illiad.troad.Consts.ACTION_CONNECT
@@ -30,9 +29,11 @@ import com.illiad.troad.Consts.TAG
 import com.illiad.troad.Consts.TUN_IP
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
+import com.illiad.troad.service.Utils.fildesChannel
 import com.illiad.troad.service.Utils.serverDomain
 import com.illiad.troad.service.Utils.serverPort
 import com.illiad.troad.service.Utils.sharedSecret
+import com.illiad.troad.service.Utils.vpnInterface
 import com.illiad.troad.service.channel.FildesChannel
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
@@ -63,10 +64,6 @@ class TroadService : VpnService() {
     private val serviceJob = SupervisorJob()
     /** The [CoroutineScope] for launching background tasks, using an IO dispatcher for network and file operations. */
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
-    /** The [ParcelFileDescriptor] for the VPN tunnel interface provided by the Android system. Null if the VPN is not prepared or has been shut down. */
-    private var vpnInterface: ParcelFileDescriptor? = null
-    /** The custom Netty [FildesChannel] used for reading from and writing to the VPN file descriptor. */
-    private var fildesChannel: FildesChannel? = null
 
     /**
      * Called by the system when the service is first created.
