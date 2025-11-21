@@ -13,7 +13,6 @@ import org.pcap4j.packet.namednumber.IpNumber
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 
-
 @ChannelHandler.Sharable
 object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
@@ -21,7 +20,12 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
         if (ctx == null || packets == null || packets.isEmpty()) {
             return
         }
-        for (packet in packets) {
+
+        // this is important to avoid ConcurrentModificationException
+        val localList = packets.toList()
+        val it = localList.iterator()
+        while (it.hasNext()) {
+            val packet = it.next()
             if (packet == null) {
                 continue
             }
