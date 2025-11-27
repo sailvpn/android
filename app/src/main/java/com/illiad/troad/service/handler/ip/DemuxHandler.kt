@@ -13,6 +13,26 @@ import org.pcap4j.packet.namednumber.IpNumber
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 
+/**
+ * pcap4j parse
+ *
+ * packet.rawData returns the entire packet as a raw ByteArray, including all headers and the payload.
+ * packet.payload: This gives you the next-layer packet object. If packet is an IpPacket, packet.payload will be a TcpPacket or UdpPacket object.
+ * packet.payload.payload: This gives you the payload of the transport layer packet, which is the actual application data. This is often an UnknownPacket, which is just a wrapper for the raw bytes.
+ *
+ * [ IP Header | TCP Header |   HTTP Payload (e.g., "GET /...")   ]
+ * <----------------------- packet.rawData ----------------------->
+ *             <----------- packet.payload.rawData --------------->
+ *                          <--- packet.payload.payload.rawData -->
+ *
+ * | Property/Method                 | What it Returns                                        | Data Type  | When to Use|
+ * -----------------------------------------------------------------------------------------------------------------------------------------
+ * | packet.rawData                  | The entire packet (IP header + TCP/UDP header + data)  | ByteArray  | When writing a fully-formed packet to the TUN interface (like in ResHandler). |
+ * | packet.payload                  | The next-layer packet object (e.g., TcpPacket)         | Packet     | To navigate down the layers to get to the data.                           |
+ * | packet.payload.rawData          | The raw bytes of the next-layer packet (TCP/UDP+data)  | ByteArray  | Rarely needed directly.                                                   |
+ * | packet.payload.payload.rawData  | The raw bytes of the application data only             | ByteArray  | When extracting data from a TUN packet to send to a proxy (like in DemuxHandler). |
+ */
+
 @ChannelHandler.Sharable
 object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
@@ -53,14 +73,17 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
                         // empty buffer, send current packet
                         if (protocol == IpNumber.TCP) {
                             // TCP packet
-                            session.writeAndFlush(packet.rawData)
+                            session.writeAndFlush(packet.payload.payload.rawData)
                         } else {
                             // UDP packet
                             session.writeAndFlush(
                                 DatagramPacket(
-                                    Unpooled.wrappedBuffer(s5UdpHeader(connection), packet.rawData),
-                                    InetSocketAddress(connection.dst, connection.dstPort),
-                                    InetSocketAddress(connection.src, connection.srcPort)
+                                    Unpooled.wrappedBuffer(
+                                        s5UdpHeader(connection),
+                                        packet.payload.payload.rawData
+                                    ),
+                                    session.channel?.remoteAddress() as InetSocketAddress,
+                                    session.channel?.localAddress() as InetSocketAddress
                                 )
                             )
                         }
@@ -69,35 +92,32 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
                         // TCP packet
                         if (protocol == IpNumber.TCP) {
                             // TCP packet
-                            session.addPacket(packet.rawData)
+                            session.addPacket(packet.payload.payload.rawData)
                         } else {
                             // UDP packet
                             session.addPacket(
-                                DatagramPacket(
-                                    Unpooled.wrappedBuffer(s5UdpHeader(connection), packet.rawData),
-                                    InetSocketAddress(connection.dst, connection.dstPort),
-                                    InetSocketAddress(connection.src, connection.srcPort)
+                                Unpooled.wrappedBuffer(
+                                    s5UdpHeader(connection),
+                                    packet.payload.payload.rawData
                                 )
                             )
-
                         }
                     }
 
                 } else {
                     // channel not yet active, buffer the packet
+                    // TCP packet
                     if (protocol == IpNumber.TCP) {
                         // TCP packet
-                        session.addPacket(packet.rawData)
+                        session.addPacket(packet.payload.payload.rawData)
                     } else {
                         // UDP packet
                         session.addPacket(
-                            DatagramPacket(
-                                Unpooled.wrappedBuffer(s5UdpHeader(connection), packet.rawData),
-                                InetSocketAddress(connection.dst, connection.dstPort),
-                                InetSocketAddress(connection.src, connection.srcPort)
+                            Unpooled.wrappedBuffer(
+                                s5UdpHeader(connection),
+                                packet.payload.payload.rawData
                             )
                         )
-
                     }
 
                     if (session.channel == null) {
