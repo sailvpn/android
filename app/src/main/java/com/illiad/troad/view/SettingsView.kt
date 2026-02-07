@@ -1,26 +1,22 @@
 package com.illiad.troad.view
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.illiad.troad.R
+import com.illiad.troad.model.Screen
 import com.illiad.troad.model.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,7 +34,16 @@ fun SettingsView(viewModel: SettingsViewModel) {
     // val isProxyCurrentlyRunning = viewModel.isProxyRunning
 
     Scaffold(
-        // topBar = { TopAppBar(title = { Text("Proxy Settings") }) }
+        topBar = {
+            TopAppBar(
+                title = { Text("Server Settings") },
+                navigationIcon = {
+                    IconButton(onClick = { viewModel.navigateTo(Screen.Main) }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -48,24 +53,6 @@ fun SettingsView(viewModel: SettingsViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.troy), // Or R.mipmap.ic_launcher_round if using adaptive icon's round version
-                contentDescription = "App Logo",
-                modifier = Modifier
-                    .size(50.dp) // Adjust size as needed
-                    .clip(CircleShape) // Clip the image to a circle
-                    .border( // Add a border
-                        width = 2.dp, // Border width
-                        color = MaterialTheme.colorScheme.primary, // Border color (adjust as needed)
-                        shape = CircleShape // Ensure border shape matches clip shape
-                    )
-            )
-
-            Text(
-                text = "Configure Remote Proxy Server",
-                style = MaterialTheme.typography.headlineSmall
-            )
-
             OutlinedTextField(
                 value = domainInput, // Use raw input for display
                 onValueChange = { viewModel.onDomainChange(it) },
@@ -128,34 +115,16 @@ fun SettingsView(viewModel: SettingsViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Enable button based on absence of error and presence of necessary (debounced) inputs
-            val enableStartButton =
-                viewModel.errorMessage == null && viewModel.debouncedUiServerDomain.isNotBlank() && viewModel.debouncedUiServerPort.isNotBlank() && viewModel.debouncedUiSharedSecret.isNotBlank() // Add if secret is mandatory
 
-            if (viewModel.isProxyRunning) {
-                Button(
-                    onClick = { viewModel.stopProxyService() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Stop Proxy Service")
-                }
-                Text(
-                    "Proxy Status: Running",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                Button(
-                    onClick = { viewModel.startProxyService() },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = enableStartButton // Use the condition based on debounced values
-                ) {
-                    Text("Start Proxy Service")
-                }
-                Text(
-                    "Proxy Status: Stopped", style = MaterialTheme.typography.bodyMedium
-                )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = {
+                    viewModel.navigateTo(Screen.Main)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save and Return")
             }
         }
     }

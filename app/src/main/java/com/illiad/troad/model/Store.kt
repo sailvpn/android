@@ -20,7 +20,10 @@ object StoreKeys {
     val TUN_IP = stringPreferencesKey("tun_ip")
 }
 
-open class TroadStore  (private val context: Context) {
+open class TroadStore  (private val appContext: Context) {
+
+    // This ensures we always use the long-lived application context
+    private val context = appContext.applicationContext
 
     open val serverDomainFlow: Flow<String> = context.dataStore.data
         .map { preferences ->

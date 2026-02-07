@@ -100,6 +100,7 @@ android {
 
 dependencies {
 
+    implementation(libs.androidx.compose.material3)
     val composeBom = platform("androidx.compose:compose-bom:2024.05.00") // Use latest BOM version
     implementation(composeBom)
     androidTestImplementation(composeBom)

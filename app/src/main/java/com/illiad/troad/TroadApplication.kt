@@ -6,9 +6,13 @@ import android.content.res.Configuration
 import android.util.Log
 import com.illiad.troad.service.security.Dtls
 import com.illiad.troad.service.security.Ssl
-
+import com.illiad.troad.model.TroadStore
 class TroadApplication : Application(), ComponentCallbacks2 {
 
+    // Lazy ensures it's only created when first needed
+    val troadStore: TroadStore by lazy {
+        TroadStore(applicationContext)
+    }
     override fun onCreate() {
         super.onCreate()
         // Your app initialization

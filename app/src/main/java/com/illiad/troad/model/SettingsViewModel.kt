@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.illiad.troad.Consts.ACTION_CONNECT
@@ -26,6 +27,12 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val app: Application, private val tStore: TroadStore
 ) : AndroidViewModel(app) {
+
+    var currentScreen by mutableStateOf(Screen.Main)
+        private set
+
+    var vpnStatusMessage by mutableStateOf("Disconnected")
+        private set
 
     // --- Raw UI Input StateFlows (what the user is typing in TextFields) ---
     private val _uiServerDomainInput = MutableStateFlow("")
@@ -51,6 +58,7 @@ class SettingsViewModel(
     // ... (tStoreServerDomain, tStoreServerPort, tStoreSharedSecret remain the same) ...
 
     var isProxyRunning by mutableStateOf(false)
+
     // No private set if ProxySettingsScreen needs to observe this directly for UI changes
     // Or if changes are propagated via a method that UI calls after an action
     var errorMessage by mutableStateOf<String?>(null)
@@ -61,7 +69,8 @@ class SettingsViewModel(
     init {
         viewModelScope.launch {
             val initialDomain = tStore.serverDomainFlow.first()
-            val initialPort = tStore.serverPortFlow.first().let { if (it == 0) "" else it.toString() }
+            val initialPort =
+                tStore.serverPortFlow.first().let { if (it == 0) "" else it.toString() }
             val initialSecret = tStore.sharedSecretFlow.first()
 
             _uiServerDomainInput.value = initialDomain
@@ -122,9 +131,11 @@ class SettingsViewModel(
             errorMessage = "Invalid port number. Must be between 1 and 65535."
             return false
         }
-        if (errorMessage == "Server port cannot be empty." || errorMessage?.startsWith("Invalid port") == true) errorMessage = null
+        if (errorMessage == "Server port cannot be empty." || errorMessage?.startsWith("Invalid port") == true) errorMessage =
+            null
         return true
     }
+
     private fun validateSecret(): Boolean {
         // Use debouncedUiSharedSecret
         // if (debouncedUiSharedSecret.isBlank()) {
@@ -160,7 +171,8 @@ class SettingsViewModel(
         if (validateAllInputs()) { // This now uses the debounced values internally
             viewModelScope.launch {
                 tStore.saveServerDomain(debouncedUiServerDomain) // Save debounced
-                debouncedUiServerPort.toIntOrNull()?.let { portInt -> tStore.saveServerPort(portInt) }
+                debouncedUiServerPort.toIntOrNull()
+                    ?.let { portInt -> tStore.saveServerPort(portInt) }
                 tStore.saveSharedSecret(debouncedUiSharedSecret)
 
                 val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
@@ -169,8 +181,8 @@ class SettingsViewModel(
                     putExtra(EXTRA_SERVER_PORT, debouncedUiServerPort.toIntOrNull() ?: 0)
                     putExtra(EXTRA_SHARED_SECRET, debouncedUiSharedSecret)
                 }
-                app.startService(startTroad)
-                isProxyRunning = true
+                // You call the static method directly using your 'app' as the context
+                ContextCompat.startForegroundService(app, startTroad)
             }
         }
     }
@@ -181,15 +193,15 @@ class SettingsViewModel(
         val stopTroad = Intent(app.applicationContext, TroadService::class.java).apply {
             action = ACTION_DISCONNECT
         }
-        app.startService(stopTroad)
-        isProxyRunning = false
+        ContextCompat.startForegroundService(app, stopTroad)
+    }
+
+    fun navigateTo(screen: Screen) {
+        currentScreen = screen
     }
 
     fun updateVpnStatus(isConnected: Boolean, message: String?) {
-        // reduce the fliping of display
-        if (isProxyRunning != isConnected) {
-            isProxyRunning = isConnected
-            // Update any other relevant UI state based on VPN status
-        }
+        isProxyRunning = isConnected
+        vpnStatusMessage = message ?: if (isConnected) "Connected" else "Disconnected"
     }
 }

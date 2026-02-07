@@ -290,6 +290,7 @@ class TroadService : VpnService() {
             }
         }
         vpnInterface?.close()
+        vpnInterface = null
         Log.i(TAG, "VPN Service stopped")
 
         stopSelf()
@@ -321,6 +322,7 @@ class TroadService : VpnService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         broadcastVpnStatus("Disconnected", false)
         Log.i(TAG, "VPN Service Destroyed.")
+        serviceJob.cancel()
     }
 
 }

@@ -3,20 +3,16 @@ package com.illiad.troad.model
 import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.illiad.troad.TroadApplication
 
-class SettingsViewModelFactory(
-    private val application: Application // To pass to AndroidViewModel and to create TroadStore
-) : ViewModelProvider.Factory { // Use ViewModelProvider.Factory (or AndroidViewModelFactory if you want to reuse its app logic)
-
+class SettingsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
-            // 1. Create TroadStore instance using the application context
-            val troadStore = TroadStore(application.applicationContext)
-
-            // 2. Create ProxySettingsViewModel with Application and TroadStore
+            // Cast to your app class to get the singleton instance
+            val troadStore = (application as TroadApplication).troadStore
             return SettingsViewModel(application, troadStore) as T
         }
-        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
