@@ -14,13 +14,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
+import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
 import com.illiad.troad.model.SettingsViewModel
 import com.illiad.troad.model.SettingsViewModelFactory
+import com.illiad.troad.view.MainView
 import com.illiad.troad.view.SettingsView
 
 class MainActivity : ComponentActivity() {
@@ -66,11 +67,12 @@ class MainActivity : ComponentActivity() {
 
     private fun splash() {
         setContent {
-            TroadTheme { // Apply your app's theme
-                Surface(
-                    modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
-                ) {
-                    SettingsView(settingsViewModel)
+            TroadTheme(darkTheme = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    when (settingsViewModel.currentScreen) {
+                        Screen.Main -> MainView(settingsViewModel)
+                        Screen.Settings -> SettingsView(settingsViewModel)
+                    }
                 }
             }
         }
