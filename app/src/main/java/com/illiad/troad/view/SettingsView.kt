@@ -1,11 +1,14 @@
 package com.illiad.troad.view
 
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -85,6 +88,8 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 ) == true
             )
 
+            CryptoSettingsItem(viewModel)
+
             OutlinedTextField(
                 value = secretInput, // Use raw input for display
                 onValueChange = { viewModel.onSecretChange(it) },
@@ -130,6 +135,63 @@ fun SettingsView(viewModel: SettingsViewModel) {
     }
 }
 
+@Composable
+fun CryptoSettingsItem(viewModel: SettingsViewModel) {
+    val currentSelection by viewModel.selectedCrypto.collectAsState()
+    var showDialog by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(text = "Authentication Method", style = MaterialTheme.typography.labelMedium)
+
+        // The clickable item showing current selection
+        ListItem(
+            headlineContent = { Text(currentSelection.value ?: "Select Method") },
+            supportingContent = { Text("Choose your preferred encryption") },
+            trailingContent = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+            modifier = Modifier.clickable { showDialog = true }
+        )
+    }
+
+    // 1-of-n Selection Dialog
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Select Authentication") },
+            text = {
+                Column {
+                    viewModel.cryptoOptions.forEach { crypto ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = (crypto == currentSelection),
+                                    onClick = {
+                                        viewModel.onCryptoSelected(crypto)
+                                        showDialog = false
+                                    }
+                                )
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (crypto == currentSelection),
+                                onClick = null // Handled by Row selectable
+                            )
+                            Text(
+                                text = crypto.value ?: "",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(start = 16.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
 
 /**
 @SuppressLint("ViewModelConstructorInComposable")

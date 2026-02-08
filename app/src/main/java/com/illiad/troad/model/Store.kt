@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.illiad.troad.service.security.Cryptos
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -16,11 +17,12 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "tr
 object StoreKeys {
     val SERVER_DOMAIN = stringPreferencesKey("server_domain")
     val SERVER_PORT = intPreferencesKey("server_port")
+    val SELECTED_CRYPTO = stringPreferencesKey("selected_crypto")
     val SHARED_SECRET = stringPreferencesKey("shared_secret")
     val TUN_IP = stringPreferencesKey("tun_ip")
 }
 
-open class TroadStore  (private val appContext: Context) {
+open class TroadStore(appContext: Context) {
 
     // This ensures we always use the long-lived application context
     private val context = appContext.applicationContext
@@ -44,6 +46,19 @@ open class TroadStore  (private val appContext: Context) {
     open suspend fun saveServerPort(port: Int) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_PORT] = port
+        }
+    }
+
+    val selectedCryptoFlow: Flow<Cryptos> = context.dataStore.data
+        .map { preferences ->
+            val savedValue =
+                preferences[StoreKeys.SELECTED_CRYPTO] ?: Cryptos.JWT2.value // Default to JWT2
+            Cryptos.fromValue(savedValue).orElse(Cryptos.JWT2)
+        }
+
+    suspend fun saveCryptoSelection(crypto: Cryptos) {
+        context.dataStore.edit { preferences ->
+            preferences[StoreKeys.SELECTED_CRYPTO] = crypto.value ?: ""
         }
     }
 

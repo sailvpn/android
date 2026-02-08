@@ -11,16 +11,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
-import com.illiad.troad.Consts.EXTRA_SERVER_ADDRESS
-import com.illiad.troad.Consts.EXTRA_SERVER_PORT
-import com.illiad.troad.Consts.EXTRA_SHARED_SECRET
 import com.illiad.troad.service.TroadService
+import com.illiad.troad.service.security.Cryptos
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class)
@@ -43,6 +44,19 @@ class SettingsViewModel(
 
     private val _uiSharedSecretInput = MutableStateFlow("")
     val uiSharedSecretInput = _uiSharedSecretInput.asStateFlow()
+
+    // Expose the current selection from the store to the UI
+    val selectedCrypto: StateFlow<Cryptos> = tStore.selectedCryptoFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Cryptos.JWT2)
+
+    // The list of items for the 1-of-n selection
+    val cryptoOptions = Cryptos.AvailableCryptos
+
+    fun onCryptoSelected(newCrypto: Cryptos) {
+        viewModelScope.launch {
+            tStore.saveCryptoSelection(newCrypto)
+        }
+    }
 
     // --- Debounced UI State (for internal logic AND potentially for UI if needed) ---
     // These are updated after debouncing. The UI can observe these if it needs
@@ -176,10 +190,8 @@ class SettingsViewModel(
                 tStore.saveSharedSecret(debouncedUiSharedSecret)
 
                 val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
+                    // Just send the command. The Service will fetch the data itself.
                     action = ACTION_CONNECT
-                    putExtra(EXTRA_SERVER_ADDRESS, debouncedUiServerDomain)
-                    putExtra(EXTRA_SERVER_PORT, debouncedUiServerPort.toIntOrNull() ?: 0)
-                    putExtra(EXTRA_SHARED_SECRET, debouncedUiSharedSecret)
                 }
                 // You call the static method directly using your 'app' as the context
                 ContextCompat.startForegroundService(app, startTroad)
