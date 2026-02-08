@@ -81,6 +81,7 @@ class SettingsViewModel(
     private val validationDebounceMillis = 300L
 
     init {
+        // 1. Initial Load: Populate the UI from the Store
         viewModelScope.launch {
             val initialDomain = tStore.serverDomainFlow.first()
             val initialPort =
@@ -91,35 +92,47 @@ class SettingsViewModel(
             _uiServerPortInput.value = initialPort
             _uiSharedSecretInput.value = initialSecret
 
+            // Sync internal debounced state
             debouncedUiServerDomain = initialDomain
             debouncedUiServerPort = initialPort
             debouncedUiSharedSecret = initialSecret
 
-            validateAllInputs()
         }
 
+        // 2. Debounced DOMAIN: Auto-save to Store
         viewModelScope.launch {
             _uiServerDomainInput
                 .debounce(validationDebounceMillis)
                 .collectLatest { domain ->
-                    debouncedUiServerDomain = domain // Update the debounced state
-                    validateDomain()
+                    debouncedUiServerDomain = domain
+                    if (validateDomain()) {
+                        tStore.saveServerDomain(domain) // Save to Store
+                    }
                 }
         }
+
+        // 3. Debounced PORT: Auto-save to Store
         viewModelScope.launch {
             _uiServerPortInput
                 .debounce(validationDebounceMillis)
                 .collectLatest { portString ->
-                    debouncedUiServerPort = portString // Update the debounced state
-                    validatePort()
+                    debouncedUiServerPort = portString
+                    if (validatePort()) {
+                        val portInt = portString.toIntOrNull() ?: 1080
+                        tStore.saveServerPort(portInt) // Save to Store
+                    }
                 }
         }
+
+        // 4. Debounced SECRET: Auto-save to Store
         viewModelScope.launch {
             _uiSharedSecretInput
                 .debounce(validationDebounceMillis)
                 .collectLatest { secret ->
-                    debouncedUiSharedSecret = secret // Update the debounced state
-                    validateSecret()
+                    debouncedUiSharedSecret = secret
+                    if (validateSecret()) {
+                        tStore.saveSharedSecret(secret) // Save to Store
+                    }
                 }
         }
     }
@@ -161,14 +174,6 @@ class SettingsViewModel(
     }
 
 
-    private fun validateAllInputs(): Boolean {
-        if (!validateDomain()) return false
-        if (!validatePort()) return false
-        if (!validateSecret()) return false
-        errorMessage = null
-        return true
-    }
-
     fun onDomainChange(newDomain: String) {
         _uiServerDomainInput.value = newDomain
     }
@@ -182,22 +187,14 @@ class SettingsViewModel(
     }
 
     fun startProxyService() {
-        if (validateAllInputs()) { // This now uses the debounced values internally
-            viewModelScope.launch {
-                tStore.saveServerDomain(debouncedUiServerDomain) // Save debounced
-                debouncedUiServerPort.toIntOrNull()
-                    ?.let { portInt -> tStore.saveServerPort(portInt) }
-                tStore.saveSharedSecret(debouncedUiSharedSecret)
-
-                val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
-                    // Just send the command. The Service will fetch the data itself.
-                    action = ACTION_CONNECT
-                }
-                // You call the static method directly using your 'app' as the context
-                ContextCompat.startForegroundService(app, startTroad)
-            }
+        val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
+            action = ACTION_CONNECT
+            // Note: We don't need to pass Extras if the Service reads from TroadStore!
         }
+        ContextCompat.startForegroundService(app, startTroad)
+
     }
+
     // ... rest of the ViewModel (stopProxyService, updateVpnStatus)
 
     fun stopProxyService() {
