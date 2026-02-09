@@ -53,17 +53,10 @@ enum class Cryptos(value: String, code: Byte, length: Short) {
         // Define the specific subset for settings screen
         val AvailableCryptos = listOf(JWT, JWT2, SHA_256)
 
-        /**
-         * Checks if the provided string matches the 'value' of an enum
-         * ONLY within the AvailableCryptos subset.
-         */
         fun fromValue(value: String?): Optional<Cryptos> {
             if (value == null) return Optional.empty()
 
-            // We search specifically within the subset list, not values()
-            val match = AvailableCryptos.find { it.value == value }
-
-            return Optional.ofNullable(match)
+            return Optional.ofNullable(Cryptos.entries.find { it.value == value })
         }
     }
 }
