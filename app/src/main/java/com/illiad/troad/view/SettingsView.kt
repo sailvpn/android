@@ -4,8 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -27,14 +29,21 @@ import com.illiad.troad.model.SettingsViewModel
 fun SettingsView(viewModel: SettingsViewModel) {
     var passwordVisible by remember { mutableStateOf(false) }
 
-    // Collect the raw input values for the TextFields
+    // State for managing popups
+    var showCaCertDialog by remember { mutableStateOf(false) }
+    var showJwtDialog by remember { mutableStateOf(false) }
+
     val domainInput by viewModel.uiServerDomainInput.collectAsState()
     val portInput by viewModel.uiServerPortInput.collectAsState()
     val secretInput by viewModel.uiSharedSecretInput.collectAsState()
 
-    // Observe other states like errorMessage and isProxyRunning directly from the ViewModel
-    // val currentErrorMessage = viewModel.errorMessage // No need to collect if it's simple State
-    // val isProxyCurrentlyRunning = viewModel.isProxyRunning
+    // --- Popup Logic ---
+    if (showCaCertDialog) {
+        ConfigCaCertDialog(onDismiss = { showCaCertDialog = false })
+    }
+    if (showJwtDialog) {
+        ConfigJwtDialog(onDismiss = { showJwtDialog = false })
+    }
 
     Scaffold(
         topBar = {
@@ -52,46 +61,50 @@ fun SettingsView(viewModel: SettingsViewModel) {
             modifier = Modifier
                 .padding(paddingValues)
                 .padding(16.dp)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()), // Added scroll for small screens
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Existing TextFields
             OutlinedTextField(
-                value = domainInput, // Use raw input for display
+                value = domainInput,
                 onValueChange = { viewModel.onDomainChange(it) },
                 label = { Text("Server Domain or IP") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                // isError is based on the viewModel's errorMessage state
-                isError = viewModel.errorMessage?.contains(
-                    "Domain",
-                    ignoreCase = true
-                ) == true || viewModel.errorMessage?.contains(
-                    "empty", ignoreCase = true
-                ) == true && viewModel.debouncedUiServerDomain.isBlank()
-
+                isError = viewModel.errorMessage?.contains("Domain", ignoreCase = true) == true
             )
 
             OutlinedTextField(
-                value = portInput, // Use raw input for display
+                value = portInput,
                 onValueChange = { viewModel.onPortChange(it) },
                 label = { Text("Server Port") },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                isError = viewModel.errorMessage?.contains(
-                    "Port",
-                    ignoreCase = true
-                ) == true || viewModel.errorMessage?.contains(
-                    "Invalid port",
-                    ignoreCase = true
-                ) == true
+                isError = viewModel.errorMessage?.contains("Port", ignoreCase = true) == true
             )
+
+            // --- New Config Buttons Section ---
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { showCaCertDialog = true }
+                ) {
+                    Text("Config CA Cert")
+                }
+            }
 
             CryptoSettingsItem(viewModel)
 
             OutlinedTextField(
-                value = secretInput, // Use raw input for display
+                value = secretInput,
                 onValueChange = { viewModel.onSecretChange(it) },
                 label = { Text("Shared Secret") },
                 modifier = Modifier.fillMaxWidth(),
@@ -99,11 +112,9 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 trailingIcon = {
-                    val image =
-                        if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                    val description = if (passwordVisible) "Hide secret" else "Show secret"
+                    val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(imageVector = image, description)
+                        Icon(imageVector = image, contentDescription = null)
                     }
                 },
                 isError = viewModel.errorMessage?.contains("Secret", ignoreCase = true) == true
@@ -118,22 +129,33 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // --- New Config Buttons Section ---
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { showJwtDialog = true }
+                ) {
+                    Text("Config JWT")
+                }
+            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.weight(1f))
 
             Button(
-                onClick = {
-                    viewModel.navigateTo(Screen.Main)
-                },
+                onClick = { viewModel.navigateTo(Screen.Main) },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Save and Return")
+                Text("Return")
             }
         }
     }
 }
+
 
 @Composable
 fun CryptoSettingsItem(viewModel: SettingsViewModel) {
@@ -192,6 +214,47 @@ fun CryptoSettingsItem(viewModel: SettingsViewModel) {
         )
     }
 }
+
+@Composable
+fun ConfigCaCertDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Config CA Cert") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Configure your Certificate Authority settings here.")
+                // Add specific CA Cert input fields here
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun ConfigJwtDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Config JWT") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Enter your JSON Web Token configuration details.")
+                // Add specific JWT input fields here
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
 
 /**
 @SuppressLint("ViewModelConstructorInComposable")
