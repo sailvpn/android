@@ -58,6 +58,16 @@ class SettingsViewModel(
         }
     }
 
+    val autoRenewal: StateFlow<Boolean> = tStore.autoRenewalFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun onAutoRenewalChecked(checked: Boolean) {
+        viewModelScope.launch {
+            tStore.saveAutoRenewal(checked)
+        }
+    }
+
+
     // --- Debounced UI State (for internal logic AND potentially for UI if needed) ---
     // These are updated after debouncing. The UI can observe these if it needs
     // to react to the debounced state, or it can just rely on errorMessage.
@@ -173,7 +183,6 @@ class SettingsViewModel(
         return true
     }
 
-
     fun onDomainChange(newDomain: String) {
         _uiServerDomainInput.value = newDomain
     }
@@ -184,6 +193,31 @@ class SettingsViewModel(
 
     fun onSecretChange(newSecret: String) {
         _uiSharedSecretInput.value = newSecret
+    }
+
+    /**
+     * Saves the CA Certificate content string into the TroadStore.
+     */
+    fun saveCaCert(certContent: String) {
+        viewModelScope.launch {
+            try {
+                tStore.saveCaCert(certContent)
+                Log.d("SettingsViewModel", "CA Cert saved successfully")
+            } catch (e: Exception) {
+                errorMessage = "Failed to save CA Cert: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun saveJwt(jwtContent: String) {
+        viewModelScope.launch {
+            try {
+                tStore.saveJwt(jwtContent)
+                Log.d("SettingsViewModel", "JWT saved successfully")
+            } catch (e: Exception) {
+                errorMessage = "Failed to save JWT: ${e.localizedMessage}"
+            }
+        }
     }
 
     fun startProxyService() {

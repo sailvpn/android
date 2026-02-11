@@ -3,6 +3,7 @@ package com.illiad.troad.model
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -20,6 +21,10 @@ object StoreKeys {
     val SELECTED_CRYPTO = stringPreferencesKey("selected_crypto")
     val SHARED_SECRET = stringPreferencesKey("shared_secret")
     val TUN_IP = stringPreferencesKey("tun_ip")
+    val CA_CERT = stringPreferencesKey("ca_cert")
+    val AUTO_RENEWAL = booleanPreferencesKey("auto_renewal")
+    val JWT_TOKEN = stringPreferencesKey("jwt_token")
+
 }
 
 open class TroadStore(appContext: Context) {
@@ -49,6 +54,15 @@ open class TroadStore(appContext: Context) {
         }
     }
 
+    open val caCertFlow: Flow<String> = context.dataStore.data
+        .map { preferences -> preferences[StoreKeys.CA_CERT] ?: "" }
+
+    open suspend fun saveCaCert(certContent: String) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.CA_CERT] = certContent
+        }
+    }
+
     val selectedCryptoFlow: Flow<Cryptos> = context.dataStore.data
         .map { preferences ->
             val savedValue =
@@ -62,6 +76,17 @@ open class TroadStore(appContext: Context) {
         }
     }
 
+    open val autoRenewalFlow: Flow<Boolean> = context.dataStore.data
+        .map { settings ->
+            settings[StoreKeys.AUTO_RENEWAL] ?: false
+        }
+
+    suspend fun saveAutoRenewal(checked: Boolean) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.AUTO_RENEWAL] = checked
+        }
+    }
+
     open val sharedSecretFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SHARED_SECRET] ?: "password"
@@ -70,6 +95,12 @@ open class TroadStore(appContext: Context) {
     open suspend fun saveSharedSecret(secret: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SHARED_SECRET] = secret
+        }
+    }
+
+    open suspend fun saveJwt(token: String) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.JWT_TOKEN] = token
         }
     }
 

@@ -1,5 +1,7 @@
 package com.illiad.troad.view
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -17,12 +19,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.illiad.troad.model.Screen
 import com.illiad.troad.model.SettingsViewModel
+import com.illiad.troad.service.security.Cryptos
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,12 +42,21 @@ fun SettingsView(viewModel: SettingsViewModel) {
     val portInput by viewModel.uiServerPortInput.collectAsState()
     val secretInput by viewModel.uiSharedSecretInput.collectAsState()
 
-    // --- Popup Logic ---
+    val cryptoSelected by viewModel.selectedCrypto.collectAsState()
+    val autoRenewal by viewModel.autoRenewal.collectAsState()
+
     if (showCaCertDialog) {
-        ConfigCaCertDialog(onDismiss = { showCaCertDialog = false })
+        ConfigCaCertDialog(
+            onDismiss = { showCaCertDialog = false },
+            viewModel = viewModel
+        )
     }
+
     if (showJwtDialog) {
-        ConfigJwtDialog(onDismiss = { showJwtDialog = false })
+        ConfigJwtDialog(
+            onDismiss = { showJwtDialog = false },
+            viewModel = viewModel
+        )
     }
 
     Scaffold(
@@ -86,9 +100,6 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 isError = viewModel.errorMessage?.contains("Port", ignoreCase = true) == true
             )
 
-            // --- New Config Buttons Section ---
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -101,24 +112,29 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 }
             }
 
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             CryptoSettingsItem(viewModel)
 
-            OutlinedTextField(
-                value = secretInput,
-                onValueChange = { viewModel.onSecretChange(it) },
-                label = { Text("Shared Secret") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(imageVector = image, contentDescription = null)
-                    }
-                },
-                isError = viewModel.errorMessage?.contains("Secret", ignoreCase = true) == true
-            )
+            if (cryptoSelected == Cryptos.SHA_256) {
+                OutlinedTextField(
+                    value = secretInput,
+                    onValueChange = { viewModel.onSecretChange(it) },
+                    label = { Text("Shared Secret") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        val image =
+                            if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(imageVector = image, contentDescription = null)
+                        }
+                    },
+                    isError = viewModel.errorMessage?.contains("Secret", ignoreCase = true) == true
+                )
+            }
 
             if (viewModel.errorMessage != null) {
                 Text(
@@ -129,18 +145,57 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 )
             }
 
-            // --- New Config Buttons Section ---
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = { showJwtDialog = true }
+            if (cryptoSelected == Cryptos.JWT) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Config JWT")
+                    Text(
+                        text = "Token Renewal Mode",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        SegmentedButton(
+                            selected = !autoRenewal,
+                            onClick = { viewModel.onAutoRenewalChecked(false) },
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                            icon = { /* Optional: Icon(Icons.Default.Edit, null) */ }
+                        ) {
+                            Text("Manual")
+                        }
+                        SegmentedButton(
+                            selected = autoRenewal,
+                            onClick = { viewModel.onAutoRenewalChecked(true) },
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                            icon = { /* Optional: Icon(Icons.Default.AutoMode, null) */ }
+                        ) {
+                            Text("Auto-Renew")
+                        }
+                    }
+
+                    // Contextual Hint
+                    Text(
+                        text = if (autoRenewal) "Proxy will handle token acquisition." else "Paste your token manually in Config JWT.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (cryptoSelected == Cryptos.JWT2 || cryptoSelected == Cryptos.JWT) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { showJwtDialog = true }
+                    ) {
+                        Text("Config JWT")
+                    }
                 }
             }
 
@@ -216,42 +271,108 @@ fun CryptoSettingsItem(viewModel: SettingsViewModel) {
 }
 
 @Composable
-fun ConfigCaCertDialog(onDismiss: () -> Unit) {
+fun ConfigCaCertDialog(
+    onDismiss: () -> Unit,
+    viewModel: SettingsViewModel // Pass ViewModel to handle saving
+) {
+    val context = LocalContext.current
+    var fileName by remember { mutableStateOf("No file selected") }
+    val scope = rememberCoroutineScope()
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            uri?.let { selectedUri ->
+                // 1. Read the file content as String
+                val content = context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                    input.bufferedReader().use { it.readText() }
+                }
+
+                // 2. Save to DataStore via ViewModel
+                content?.let { certString ->
+                    fileName = selectedUri.lastPathSegment ?: "Certificate Loaded"
+                    scope.launch {
+                        viewModel.saveCaCert(certString)
+                    }
+                }
+            }
+        }
+    )
+
+    // Define the specific MIME types for certificates
+    val certMimeTypes = arrayOf(
+        "application/x-x509-ca-cert", // .crt, .der, .cer
+        "application/x-pem-file",     // .pem
+        "application/pkix-cert",      // Public Key Infrastructure
+        "application/x-pkcs12"        // .p12, .pfx (if you support bundles)
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Config CA Cert") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Configure your Certificate Authority settings here.")
-                // Add specific CA Cert input fields here
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Selected: $fileName")
+                Button(onClick = { filePickerLauncher.launch(certMimeTypes) }) {
+                    Text("Choose Certificate File")
+                }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @Composable
-fun ConfigJwtDialog(onDismiss: () -> Unit) {
+fun ConfigJwtDialog(
+    onDismiss: () -> Unit,
+    viewModel: SettingsViewModel // Use the ViewModel!
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var fileName by remember { mutableStateOf("No file selected") }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { selectedUri ->
+            // Reading file in a background-friendly way
+            val content = context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                input.bufferedReader().use { it.readText() }
+            }
+
+            content?.let { jwtString ->
+                fileName = "Loaded JWT"
+                // Persist it immediately so it's not lost on rotation
+                scope.launch {
+                    viewModel.saveJwt(jwtString)
+                }
+            }
+        }
+    }
+
+    // Define the specific MIME types for certificates
+    val certMimeTypes = arrayOf(
+        "application/x-x509-ca-cert", // .crt, .der, .cer
+        "application/x-pem-file",     // .pem
+        "application/pkix-cert",      // Public Key Infrastructure
+        "application/x-pkcs12"        // .p12, .pfx (if you support bundles)
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Config JWT") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Enter your JSON Web Token configuration details.")
-                // Add specific JWT input fields here
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Current status: $fileName")
+                Button(onClick = { filePickerLauncher.launch(certMimeTypes) }) {
+                    // Using "OpenDocument" is generally more reliable on modern Android
+                    Text("Select JWT File")
+                }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
