@@ -45,6 +45,9 @@ class SettingsViewModel(
     private val _uiSharedSecretInput = MutableStateFlow("")
     val uiSharedSecretInput = _uiSharedSecretInput.asStateFlow()
 
+    private val _username = MutableStateFlow("")
+    private val _password = MutableStateFlow("")
+
     // Expose the current selection from the store to the UI
     val selectedCrypto: StateFlow<Cryptos> = tStore.selectedCryptoFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Cryptos.JWT2)
@@ -67,6 +70,10 @@ class SettingsViewModel(
         }
     }
 
+    val username: StateFlow<String> = _username.asStateFlow()
+
+    val password: StateFlow<String> = _password.asStateFlow()
+
 
     // --- Debounced UI State (for internal logic AND potentially for UI if needed) ---
     // These are updated after debouncing. The UI can observe these if it needs
@@ -88,7 +95,7 @@ class SettingsViewModel(
     var errorMessage by mutableStateOf<String?>(null)
     // This is already public and will be observed by the UI
 
-    private val validationDebounceMillis = 300L
+    private val debounceMillis = 300L
 
     init {
         // 1. Initial Load: Populate the UI from the Store
@@ -101,6 +108,9 @@ class SettingsViewModel(
             _uiServerDomainInput.value = initialDomain
             _uiServerPortInput.value = initialPort
             _uiSharedSecretInput.value = initialSecret
+            _username.value = tStore.usernameFlow.first()
+            _password.value = tStore.passwordFlow.first()
+
 
             // Sync internal debounced state
             debouncedUiServerDomain = initialDomain
@@ -112,7 +122,7 @@ class SettingsViewModel(
         // 2. Debounced DOMAIN: Auto-save to Store
         viewModelScope.launch {
             _uiServerDomainInput
-                .debounce(validationDebounceMillis)
+                .debounce(debounceMillis)
                 .collectLatest { domain ->
                     debouncedUiServerDomain = domain
                     if (validateDomain()) {
@@ -124,7 +134,7 @@ class SettingsViewModel(
         // 3. Debounced PORT: Auto-save to Store
         viewModelScope.launch {
             _uiServerPortInput
-                .debounce(validationDebounceMillis)
+                .debounce(debounceMillis)
                 .collectLatest { portString ->
                     debouncedUiServerPort = portString
                     if (validatePort()) {
@@ -137,7 +147,7 @@ class SettingsViewModel(
         // 4. Debounced SECRET: Auto-save to Store
         viewModelScope.launch {
             _uiSharedSecretInput
-                .debounce(validationDebounceMillis)
+                .debounce(debounceMillis)
                 .collectLatest { secret ->
                     debouncedUiSharedSecret = secret
                     if (validateSecret()) {
@@ -145,6 +155,23 @@ class SettingsViewModel(
                     }
                 }
         }
+
+        viewModelScope.launch {
+            _username
+                .debounce { debounceMillis }
+                .collectLatest { name ->
+                    tStore.saveUsername(name)
+                }
+        }
+
+        viewModelScope.launch {
+            _password
+                .debounce { debounceMillis }
+                .collectLatest { pass ->
+                    tStore.savePassword(pass)
+                }
+        }
+
     }
 
     private fun validateDomain(): Boolean {
@@ -195,6 +222,14 @@ class SettingsViewModel(
         _uiSharedSecretInput.value = newSecret
     }
 
+    fun onUsernameChange(changed: String) {
+        _username.value = changed
+    }
+
+    fun onPasswordChange(changed: String) {
+        _password.value = changed
+    }
+
     /**
      * Saves the CA Certificate content string into the TroadStore.
      */
@@ -218,6 +253,10 @@ class SettingsViewModel(
                 errorMessage = "Failed to save JWT: ${e.localizedMessage}"
             }
         }
+    }
+
+    suspend fun acquireJwt(duration: Int): Boolean {
+        return true
     }
 
     fun startProxyService() {

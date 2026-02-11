@@ -24,10 +24,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.illiad.troad.model.Duration
 import com.illiad.troad.model.Screen
 import com.illiad.troad.model.SettingsViewModel
 import com.illiad.troad.service.security.Cryptos
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +38,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
 
     // State for managing popups
     var showCaCertDialog by remember { mutableStateOf(false) }
+    var showAcqJWTDialog by remember { mutableStateOf(false) }
     var showJwtDialog by remember { mutableStateOf(false) }
 
     val domainInput by viewModel.uiServerDomainInput.collectAsState()
@@ -49,6 +52,14 @@ fun SettingsView(viewModel: SettingsViewModel) {
         ConfigCaCertDialog(
             onDismiss = { showCaCertDialog = false },
             viewModel = viewModel
+        )
+    }
+
+    if(showAcqJWTDialog) {
+        AcquireTokenDialog(
+            onDismiss = { showAcqJWTDialog = false },
+            viewModel = viewModel,
+            modifier = Modifier
         )
     }
 
@@ -145,6 +156,34 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 )
             }
 
+            if(cryptoSelected == Cryptos.JWT) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { showAcqJWTDialog = true }
+                    ) {
+                        Text("Acquire JWT by Username/Password")
+                    }
+                }
+            }
+
+            if (cryptoSelected == Cryptos.JWT2 || cryptoSelected == Cryptos.JWT) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { showJwtDialog = true }
+                    ) {
+                        Text("Config JWT")
+                    }
+                }
+            }
             if (cryptoSelected == Cryptos.JWT) {
                 Column(
                     modifier = Modifier
@@ -182,20 +221,6 @@ fun SettingsView(viewModel: SettingsViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            }
-            if (cryptoSelected == Cryptos.JWT2 || cryptoSelected == Cryptos.JWT) {
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = { showJwtDialog = true }
-                    ) {
-                        Text("Config JWT")
-                    }
                 }
             }
 
@@ -373,6 +398,109 @@ fun ConfigJwtDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AcquireTokenDialog(
+    onDismiss: () -> Unit,
+    viewModel: SettingsViewModel,
+    modifier: Modifier = Modifier
+) {
+    var username by remember { mutableStateOf(viewModel.username) }
+    var password by remember { mutableStateOf(viewModel.password) }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    // State for Enum-based Dropdown
+    var expanded by remember { mutableStateOf(false) }
+    var selectedDuration by remember { mutableStateOf(Duration.DEFAULT) }
+
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Acquire JWT Token") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = username.collectAsState().value,
+                    onValueChange = { viewModel.onUsernameChange(it) },
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = password.collectAsState().value,
+                    onValueChange = { viewModel.onPasswordChange(it) },
+                    label = { Text("Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        val image =
+                            if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(imageVector = image, contentDescription = null)
+                        }
+                    },
+                    singleLine = true
+                )
+
+                // 1-of-N Validity Period using Duration Enum
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedDuration.label,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Validity Period") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        Duration.entries.forEach { duration ->
+                            DropdownMenuItem(
+                                text = { Text(duration.label) },
+                                onClick = {
+                                    selectedDuration = duration
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    scope.launch {
+                        // only duration is pass back, pther values are already stored back in viewModel
+                        val success = viewModel.acquireJwt(
+                            selectedDuration.minutes
+                        )
+                        if (success) onDismiss()
+                    }
+                }
+            ) {
+                Text("Acquire")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
     )
 }
 

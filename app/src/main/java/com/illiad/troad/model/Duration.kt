@@ -1,7 +1,6 @@
 package com.illiad.troad.model
 
-enum class Validation(val minutes: Int, val label: String) {
-    NULL(0, "Null"),
+enum class Duration(val minutes: Int, val label: String) {
     ONE_DAY(1440, "1 Day (1,440 minutes)"),
     THREE_DAYS(4320, "3 Days (4,320 minutes)"),
     ONE_WEEK(10080, "1 Week (10,080 minutes)"),
@@ -12,11 +11,9 @@ enum class Validation(val minutes: Int, val label: String) {
 
     companion object {
         // Helper to find an enum by its value (useful for DataStore/API results)
-        fun fromMinutes(minutes: Int): Validation {
-            return entries.find { it.minutes == minutes } ?: NULL
+        fun fromMinutes(minutes: Int): Duration {
+            return entries.find { it.minutes == minutes } ?: ONE_WEEK
         }
-
-        // check for NULL to make surue that the user set a valid Validation v
-        val DEFAULT = NULL
+        val DEFAULT = ONE_WEEK
     }
 }

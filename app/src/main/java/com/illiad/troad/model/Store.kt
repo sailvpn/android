@@ -24,40 +24,42 @@ object StoreKeys {
     val CA_CERT = stringPreferencesKey("ca_cert")
     val AUTO_RENEWAL = booleanPreferencesKey("auto_renewal")
     val JWT_TOKEN = stringPreferencesKey("jwt_token")
+    val USERNAME = stringPreferencesKey("username")
+    val PASSWORD = stringPreferencesKey("password")
 
 }
 
-open class TroadStore(appContext: Context) {
+class TroadStore(appContext: Context) {
 
     // This ensures we always use the long-lived application context
     private val context = appContext.applicationContext
 
-    open val serverDomainFlow: Flow<String> = context.dataStore.data
+    val serverDomainFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SERVER_DOMAIN] ?: ""
         }
 
-    open suspend fun saveServerDomain(domain: String) {
+    suspend fun saveServerDomain(domain: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_DOMAIN] = domain
         }
     }
 
-    open val serverPortFlow: Flow<Int> = context.dataStore.data
+    val serverPortFlow: Flow<Int> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SERVER_PORT] ?: 1080
         }
 
-    open suspend fun saveServerPort(port: Int) {
+    suspend fun saveServerPort(port: Int) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_PORT] = port
         }
     }
 
-    open val caCertFlow: Flow<String> = context.dataStore.data
+    val caCertFlow: Flow<String> = context.dataStore.data
         .map { preferences -> preferences[StoreKeys.CA_CERT] ?: "" }
 
-    open suspend fun saveCaCert(certContent: String) {
+    suspend fun saveCaCert(certContent: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.CA_CERT] = certContent
         }
@@ -76,7 +78,7 @@ open class TroadStore(appContext: Context) {
         }
     }
 
-    open val autoRenewalFlow: Flow<Boolean> = context.dataStore.data
+    val autoRenewalFlow: Flow<Boolean> = context.dataStore.data
         .map { settings ->
             settings[StoreKeys.AUTO_RENEWAL] ?: false
         }
@@ -87,22 +89,46 @@ open class TroadStore(appContext: Context) {
         }
     }
 
-    open val sharedSecretFlow: Flow<String> = context.dataStore.data
+    val sharedSecretFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[StoreKeys.SHARED_SECRET] ?: "password"
         }
 
-    open suspend fun saveSharedSecret(secret: String) {
+    suspend fun saveSharedSecret(secret: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SHARED_SECRET] = secret
         }
     }
 
-    open suspend fun saveJwt(token: String) {
+    suspend fun saveJwt(token: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.JWT_TOKEN] = token
         }
     }
+
+    val usernameFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[StoreKeys.USERNAME] ?: ""
+        }
+
+    suspend fun saveUsername(userName: String) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.USERNAME] = userName
+        }
+
+    }
+
+    val passwordFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[StoreKeys.PASSWORD] ?: ""
+        }
+
+    suspend fun savePassword(password: String) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.PASSWORD] = password
+        }
+    }
+
 
     val tunIpFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
