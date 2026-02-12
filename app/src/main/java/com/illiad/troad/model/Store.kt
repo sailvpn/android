@@ -100,6 +100,11 @@ class TroadStore(appContext: Context) {
         }
     }
 
+    val jwtFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[StoreKeys.JWT_TOKEN] ?: ""
+        }
+
     suspend fun saveJwt(token: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.JWT_TOKEN] = token

@@ -15,9 +15,6 @@ import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.DNS1
 import com.illiad.troad.Consts.DNS2
 import com.illiad.troad.Consts.EXTRA_IS_CONNECTED
-import com.illiad.troad.Consts.EXTRA_SERVER_ADDRESS
-import com.illiad.troad.Consts.EXTRA_SERVER_PORT
-import com.illiad.troad.Consts.EXTRA_SHARED_SECRET
 import com.illiad.troad.Consts.EXTRA_STATUS_MESSAGE
 import com.illiad.troad.Consts.MTU
 import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_ID
@@ -27,16 +24,15 @@ import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_DISCONNECT
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_OPEN_APP
 import com.illiad.troad.Consts.TAG
 import com.illiad.troad.Consts.TUN_IP
+import com.illiad.troad.model.TroadStore
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
 import com.illiad.troad.service.Utils.fildesChannel
-import com.illiad.troad.service.Utils.serverDomain
-import com.illiad.troad.service.Utils.serverPort
-import com.illiad.troad.service.Utils.sharedSecret
 import com.illiad.troad.service.Utils.vpnInterface
 import com.illiad.troad.service.channel.FildesChannel
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
+import com.illiad.troad.service.security.Cryptos
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.MultiThreadIoEventLoopGroup
@@ -44,7 +40,11 @@ import io.netty.channel.nio.NioIoHandler
 import io.netty.util.concurrent.DefaultEventExecutorGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.io.FileDescriptor
 
@@ -60,10 +60,11 @@ import java.io.FileDescriptor
  */
 class TroadService : VpnService() {
 
-    /** A [SupervisorJob] for managing coroutines within the service, allowing child coroutines to fail without canceling the entire scope. */
-    private val serviceJob = SupervisorJob()
-    /** The [CoroutineScope] for launching background tasks, using an IO dispatcher for network and file operations. */
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+     // CoroutineScope for launching background tasks, using an IO dispatcher for network and file operations.
+     // SupervisorJob for managing coroutines within the service, allowing child coroutines to fail without canceling the entire scope.
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val tStore by lazy { TroadStore(applicationContext) }
+    private var observationJob: Job? = null
 
     /**
      * Called by the system when the service is first created.
@@ -73,6 +74,7 @@ class TroadService : VpnService() {
         super.onCreate()
         Log.d(TAG, "VPN Service Created.")
         createNotificationChannel()
+        startObservingSettings()
     }
 
     /**
@@ -92,10 +94,6 @@ class TroadService : VpnService() {
                     Log.d(TAG, "VPN already running.")
                     return START_STICKY
                 }
-                serverDomain = intent.getStringExtra(EXTRA_SERVER_ADDRESS)!!
-                serverPort = intent.getIntExtra(EXTRA_SERVER_PORT, 0)
-                sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET)!!
-
 
                 if (prepareVpn()) {
                     serviceScope.launch {
@@ -322,7 +320,35 @@ class TroadService : VpnService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         broadcastVpnStatus("Disconnected", false)
         Log.i(TAG, "VPN Service Destroyed.")
-        serviceJob.cancel()
+        serviceScope.cancel() // Stop all observations when service is killed
+    }
+
+    private fun startObservingSettings() {
+        observationJob = serviceScope.launch {
+            // Combine all flows into a single configuration stream
+            combine(
+                tStore.serverDomainFlow,
+                tStore.serverPortFlow,
+                tStore.caCertFlow,
+                tStore.selectedCryptoFlow,
+                tStore.sharedSecretFlow,
+                tStore.jwtFlow
+            ) { v ->
+                // This data class acts as a snapshot of your current settings
+                VpnSettings(
+                    v[0] as String,
+                    v[1] as Int,
+                    v[2] as String,
+                    v[3] as Cryptos,
+                    v[4] as String,
+                    v[5] as String
+                )
+            }.collectLatest { settings ->
+                // This block runs whenever ANY of the 6 settings change
+                Utils.settings = settings
+                Log.d("TroadService", "Applying new config: ${settings.crypto.value} on ${settings.domain}")
+            }
+        }
     }
 
 }

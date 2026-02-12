@@ -13,9 +13,7 @@ import java.util.concurrent.locks.ReentrantLock
 
 object Utils {
 
-    var serverDomain: String = "127.0.0.1"
-    var serverPort: Int = 2080
-    var sharedSecret: String = "sharedSecret"
+    var settings: VpnSettings? = null
 
     /** The [ParcelFileDescriptor] for the VPN tunnel interface provided by the Android system. Null if the VPN is not prepared or has been shut down. */
     var vpnInterface: ParcelFileDescriptor? = null
