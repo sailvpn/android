@@ -1,6 +1,6 @@
 package com.illiad.troad.service.handler.socks5.udp
 
-import com.illiad.troad.service.Utils.fildesChannel
+import com.illiad.troad.Utils.fildesChannel
 import com.illiad.troad.service.handler.ip.Demux
 import io.netty.buffer.ByteBuf
 import io.netty.channel.ChannelHandlerContext

@@ -4,8 +4,6 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
 import android.util.Log
-import com.illiad.troad.service.security.Dtls
-import com.illiad.troad.service.security.Ssl
 import com.illiad.troad.model.TroadStore
 class TroadApplication : Application(), ComponentCallbacks2 {
 
@@ -15,10 +13,6 @@ class TroadApplication : Application(), ComponentCallbacks2 {
     }
     override fun onCreate() {
         super.onCreate()
-        // Your app initialization
-        Ssl.initialize(this)
-        Dtls.initialize(this)
-
     }
 
     /**

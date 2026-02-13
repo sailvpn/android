@@ -4,10 +4,9 @@ import com.illiad.troad.service.HandlerNamer
 import com.illiad.troad.service.codec.socks5.V5ClientDecoder
 import com.illiad.troad.service.codec.socks5.V5ClientEncoder
 import com.illiad.troad.service.handler.ip.Connection
-import com.illiad.troad.service.security.Ssl
-import com.illiad.troad.service.Utils.serverDomain
-import com.illiad.troad.service.Utils.serverPort
 import com.illiad.troad.service.handler.ip.Demux
+import com.illiad.troad.Utils
+import com.illiad.troad.service.security.CertManager
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.*
 import io.netty.channel.nio.NioIoHandler
@@ -24,9 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class ConnectHandler() : SimpleChannelInboundHandler<Connection>() {
-
-    private val serviceJob = SupervisorJob()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     public override fun channelRead0(ctx: ChannelHandlerContext, connection: Connection) {
 
@@ -54,14 +51,14 @@ class ConnectHandler() : SimpleChannelInboundHandler<Connection>() {
                 .handler(object : ChannelInitializer<SocketChannel?>() {
                     override fun initChannel(sc: SocketChannel?) {}
                 }) // connect to the proxy server, and forward the Socks connect command message to the remote server
-                .connect(serverDomain, serverPort)
+                .connect(Utils.settings!!.domain, Utils.settings!!.port)
                 .addListener(ChannelFutureListener { future: ChannelFuture? ->
                     if (future!!.isSuccess) {
                         val ch = future.channel()
-                        val sslHandler = Ssl.sslCtx!!.newHandler(
+                        val sslHandler = CertManager.sslCtx!!.newHandler(
                             ch.alloc(),
-                            serverDomain,
-                            serverPort
+                            Utils.settings!!.domain,
+                            Utils.settings!!.port
                         )
 
                         val pipeline = ch.pipeline()

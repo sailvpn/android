@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.illiad.troad.service.security.Cryptos
@@ -26,6 +27,7 @@ object StoreKeys {
     val JWT_TOKEN = stringPreferencesKey("jwt_token")
     val USERNAME = stringPreferencesKey("username")
     val PASSWORD = stringPreferencesKey("password")
+    val DURATION = longPreferencesKey("duration")
 
 }
 
@@ -133,6 +135,11 @@ class TroadStore(appContext: Context) {
             settings[StoreKeys.PASSWORD] = password
         }
     }
+
+    val durationFlow: Flow<Long> = context.dataStore.data
+        .map { preferences ->
+            preferences[StoreKeys.DURATION] ?: 10080L
+        }
 
 
     val tunIpFlow: Flow<String> = context.dataStore.data

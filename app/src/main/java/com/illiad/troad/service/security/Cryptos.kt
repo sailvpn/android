@@ -39,7 +39,7 @@ enum class Cryptos(value: String, code: Byte, length: Short) {
     HMAC_SHA3_384("HmacSHA3-384", 0xD1.toByte(), 48.toShort()),
     HMAC_SHA3_512("HmacSHA3-512", 0xE1.toByte(), 64.toShort());
 
-    val value: String?
+    val value: String
     val code: Byte
     val length: Short
 

@@ -2,13 +2,13 @@ package com.illiad.troad.service.security
 
 interface Secret {
     @get:Throws(Exception::class)
-    var secret: ByteArray?
+    val secret: ByteArray?
 
-    var cryptoType: Cryptos?
+    val cryptoType: Cryptos?
 
-    var cryptoTypeByte: Byte?
+    val cryptoTypeByte: Byte
 
-    var cryptoLength: Short?
+    val cryptoLength: Short
 
-    fun offset(): ByteArray
+    fun offset(): ByteArray?
 }

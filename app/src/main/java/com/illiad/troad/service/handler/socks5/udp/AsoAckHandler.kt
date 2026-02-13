@@ -1,10 +1,10 @@
 package com.illiad.troad.service.handler.socks5.udp
 
 import com.illiad.troad.service.HandlerNamer
-import com.illiad.troad.service.Utils
+import com.illiad.troad.Utils
+import com.illiad.troad.service.handler.dtls.DtlsHandler
 import com.illiad.troad.service.handler.ip.Connection
 import com.illiad.troad.service.handler.ip.Demux
-import com.illiad.troad.service.security.Dtls
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelFutureListener
@@ -17,6 +17,7 @@ import io.netty.handler.codec.socksx.v5.Socks5CommandResponse
 import io.netty.handler.codec.socksx.v5.Socks5CommandStatus
 import io.netty.util.concurrent.Future
 import io.netty.util.concurrent.GenericFutureListener
+import java.net.InetSocketAddress
 import java.util.concurrent.ExecutionException
 
 
@@ -40,7 +41,7 @@ class AsoAckHandler(private val connection: Connection) :
                     asoPipeline.remove(name)
                 }
             }
-            val session = Demux.getSession(connection);
+            val session = Demux.getSession(connection)
             if (session != null) {
                 // associate aso channel with connection, now that it is established
                 session.aso = ctx.channel()
@@ -60,10 +61,8 @@ class AsoAckHandler(private val connection: Connection) :
                             session.channel = ch
                             val pipeline = ch.pipeline()
                             // setup DTLS handlers for backend
-                            val dtlsHandler = Dtls.dtlsCtx!!.newHandler(
-                                ch.alloc(),
-                                res.bndAddr(),
-                                res.bndPort(),
+                            val dtlsHandler = DtlsHandler(
+                                ch.remoteAddress() as InetSocketAddress
                             )
                             pipeline.addLast(dtlsHandler)
                             dtlsHandler.handshakeFuture()

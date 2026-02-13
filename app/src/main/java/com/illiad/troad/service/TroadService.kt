@@ -22,17 +22,15 @@ import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_NAME
 import com.illiad.troad.Consts.NOTIFICATION_ID
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_DISCONNECT
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_OPEN_APP
-import com.illiad.troad.Consts.TAG
+import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.TUN_IP
-import com.illiad.troad.model.TroadStore
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
-import com.illiad.troad.service.Utils.fildesChannel
-import com.illiad.troad.service.Utils.vpnInterface
+import com.illiad.troad.Utils.fildesChannel
+import com.illiad.troad.Utils.vpnInterface
 import com.illiad.troad.service.channel.FildesChannel
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
-import com.illiad.troad.service.security.Cryptos
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.MultiThreadIoEventLoopGroup
@@ -40,11 +38,8 @@ import io.netty.channel.nio.NioIoHandler
 import io.netty.util.concurrent.DefaultEventExecutorGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.io.FileDescriptor
 
@@ -63,8 +58,6 @@ class TroadService : VpnService() {
      // CoroutineScope for launching background tasks, using an IO dispatcher for network and file operations.
      // SupervisorJob for managing coroutines within the service, allowing child coroutines to fail without canceling the entire scope.
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val tStore by lazy { TroadStore(applicationContext) }
-    private var observationJob: Job? = null
 
     /**
      * Called by the system when the service is first created.
@@ -72,9 +65,8 @@ class TroadService : VpnService() {
      */
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "VPN Service Created.")
+        Log.d(TS, "VPN Service Created.")
         createNotificationChannel()
-        startObservingSettings()
     }
 
     /**
@@ -87,11 +79,11 @@ class TroadService : VpnService() {
      * @return The return value indicates what semantics the system should use for the service's current started state.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand received: ${intent?.action}")
+        Log.d(TS, "onStartCommand received: ${intent?.action}")
         when (intent?.action) {
             ACTION_CONNECT -> {
                 if (fildesChannel?.isActive == true) {
-                    Log.d(TAG, "VPN already running.")
+                    Log.d(TS, "VPN already running.")
                     return START_STICKY
                 }
 
@@ -100,16 +92,16 @@ class TroadService : VpnService() {
                         startVpn(vpnInterface?.fileDescriptor!!)
                     }
                     startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
-                    Log.d(TAG, "VPN connection established.")
+                    Log.d(TS, "VPN connection established.")
                 } else {
-                    Log.e(TAG, "Failed to establish VPN connection.")
+                    Log.e(TS, "Failed to establish VPN connection.")
                     stopVpn()
 
                 }
             }
 
             ACTION_DISCONNECT -> {
-                Log.d(TAG, "Disconnecting VPN.")
+                Log.d(TS, "Disconnecting VPN.")
                 stopVpn()
             }
         }
@@ -194,7 +186,7 @@ class TroadService : VpnService() {
      */
     private fun prepareVpn(): Boolean {
 
-        Log.d(TAG, "Preparing VPN interface at: $TUN_IP")
+        Log.d(TS, "Preparing VPN interface at: $TUN_IP")
         val builder = Builder()
             .setSession(getString(R.string.app_name))
             .addAddress(TUN_IP, 24)
@@ -206,7 +198,7 @@ class TroadService : VpnService() {
         try {
             vpnInterface = builder.establish()
         } catch (e: Exception) {
-            Log.e(TAG, "Error establishing VPN interface", e)
+            Log.e(TS, "Error establishing VPN interface", e)
             sendBroadcast(
                 Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
                     "status", "Error establishing VPN interface"
@@ -216,7 +208,7 @@ class TroadService : VpnService() {
         }
 
         if (vpnInterface == null) {
-            Log.e(TAG, "VPN establish returned null. User might have denied permission.")
+            Log.e(TS, "VPN establish returned null. User might have denied permission.")
             sendBroadcast(
                 Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
                     "status", "PERMISSION_DENIED"
@@ -260,10 +252,10 @@ class TroadService : VpnService() {
         b.connect(fildesAddress, fildesAddress)
             .addListener { future ->
                 if (future.isSuccess) {
-                    Log.i(TAG, "VPN connection established.")
+                    Log.i(TS, "VPN connection established.")
                     broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
                 } else {
-                    Log.e(TAG, "VPN connection failed", future.cause())
+                    Log.e(TS, "VPN connection failed", future.cause())
                     broadcastVpnStatus("VPN connection failed", false)
                     stopVpn()
                 }
@@ -275,7 +267,7 @@ class TroadService : VpnService() {
      * Call this when the VPN is meant to be fully shut down.
      */
     private fun stopVpn() {
-        Log.i(TAG, "stopVpnService called")
+        Log.i(TS, "stopVpnService called")
 
         if (fildesChannel?.isActive == true) {
             fildesChannel?.close()?.sync()?.addListener { future ->
@@ -283,13 +275,13 @@ class TroadService : VpnService() {
                     if (!future.isSuccess) {
                         future.cause().printStackTrace()
                     }
-                    Log.i(TAG, "VPN connection closed.")
+                    Log.i(TS, "VPN connection closed.")
                 }
             }
         }
         vpnInterface?.close()
         vpnInterface = null
-        Log.i(TAG, "VPN Service stopped")
+        Log.i(TS, "VPN Service stopped")
 
         stopSelf()
     }
@@ -306,7 +298,7 @@ class TroadService : VpnService() {
             putExtra(EXTRA_IS_CONNECTED, connected)
         }
         sendBroadcast(intent)
-        Log.d(TAG, "VPN status broadcast: '$message', Connected: $connected")
+        Log.d(TS, "VPN status broadcast: '$message', Connected: $connected")
 
     }
 
@@ -319,36 +311,8 @@ class TroadService : VpnService() {
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         broadcastVpnStatus("Disconnected", false)
-        Log.i(TAG, "VPN Service Destroyed.")
+        Log.i(TS, "VPN Service Destroyed.")
         serviceScope.cancel() // Stop all observations when service is killed
-    }
-
-    private fun startObservingSettings() {
-        observationJob = serviceScope.launch {
-            // Combine all flows into a single configuration stream
-            combine(
-                tStore.serverDomainFlow,
-                tStore.serverPortFlow,
-                tStore.caCertFlow,
-                tStore.selectedCryptoFlow,
-                tStore.sharedSecretFlow,
-                tStore.jwtFlow
-            ) { v ->
-                // This data class acts as a snapshot of your current settings
-                VpnSettings(
-                    v[0] as String,
-                    v[1] as Int,
-                    v[2] as String,
-                    v[3] as Cryptos,
-                    v[4] as String,
-                    v[5] as String
-                )
-            }.collectLatest { settings ->
-                // This block runs whenever ANY of the 6 settings change
-                Utils.settings = settings
-                Log.d("TroadService", "Applying new config: ${settings.crypto.value} on ${settings.domain}")
-            }
-        }
     }
 
 }

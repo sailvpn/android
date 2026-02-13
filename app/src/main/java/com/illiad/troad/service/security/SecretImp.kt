@@ -1,39 +1,53 @@
 package com.illiad.troad.service.security
 
-import com.illiad.troad.R
-import com.illiad.troad.service.Utils.getString
-import com.illiad.troad.service.Utils.sharedSecret
+import com.illiad.troad.Consts.MAX
+import com.illiad.troad.Consts.MIN
+import com.illiad.troad.Utils
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
-import java.util.Random
+import java.security.SecureRandom
+
 
 object SecretImp : Secret {
-    private val random: Random = Random()
+    private val secureRandom = SecureRandom()
 
     @get:Throws(NoSuchAlgorithmException::class)
-    override var secret: ByteArray? = null
+    override val secret: ByteArray?
         get() {
-            val digest =
-                MessageDigest.getInstance(Cryptos.valueOf(getString(R.string.crypto)).value!!)
-            return digest.digest(sharedSecret.encodeToByteArray())
+            // Check if crypto type is JWT
+            val cryptoType = Utils.settings?.crypto
+
+            if (Cryptos.JWT2 == cryptoType || Cryptos.JWT == cryptoType) {
+                // Get current token from token manager (may be dynamically renewed)
+                val token = Utils.settings!!.jwt
+                check(!(token == null || token.isEmpty())) { "Token is not configured." }
+                return token.toByteArray(StandardCharsets.UTF_8)
+            } else if (Cryptos.SHA_256 == cryptoType) {
+                // Hash-based authentication
+                val digest =
+                    MessageDigest.getInstance(Cryptos.SHA_256.value)
+                val secret = Utils.settings!!.secret
+                check(!(secret == null || secret.isEmpty())) { "Secret is not configured." }
+                return digest.digest(secret.toByteArray(StandardCharsets.UTF_8))
+            }
+            return null
         }
 
-    override var cryptoType: Cryptos? = null
-        get() = Cryptos.valueOf(getString(R.string.crypto))
+    override val cryptoType: Cryptos
+        get() = Utils.settings!!.crypto
 
-    override var cryptoTypeByte: Byte? = null
-        get() = CryptoByte.toByte(Cryptos.valueOf(getString(R.string.crypto)))
+    override val cryptoTypeByte: Byte
+        get() = Utils.settings!!.crypto.code
 
-    override var cryptoLength: Short? = null
-        get() = CryptoByte.byteLength(
-            Cryptos.valueOf(getString(R.string.crypto))
-        )
+    override val cryptoLength: Short
+        get() = Utils.settings!!.crypto.length
 
     override fun offset(): ByteArray {
-        val length = random.nextInt(R.integer.max - R.integer.min) + R.integer.min
-        val byteArray = ByteArray(length)
-        random.nextBytes(byteArray)
-        return byteArray
+        // generate random ran bytes of length params.min..params.max
+        val offsetLen: Int = secureRandom.nextInt(MAX + MIN)
+        val offsetBytes = ByteArray(offsetLen)
+        secureRandom.nextBytes(offsetBytes)
+        return offsetBytes
     }
-
 }

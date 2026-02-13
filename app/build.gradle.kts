@@ -118,11 +118,17 @@ dependencies {
     // https://mvnrepository.com/artifact/io.netty/netty-all
     implementation("io.netty:netty-all:4.2.2.Final")
     implementation("io.projectreactor.netty:reactor-netty:1.1.0")
+    // Jackson for JSON serialization
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.2")
+    // JWT support
+    implementation("io.jsonwebtoken:jjwt-api:0.12.5")
     // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-core
     implementation("org.pcap4j:pcap4j-core:2.0.0-alpha.6")
     // https://mvnrepository.com/artifact/org.pcap4j/pcap4j-packetfactory-static
     implementation("org.pcap4j:pcap4j-packetfactory-static:2.0.0-alpha.6")
-
+    // Bridges Project Reactor (Mono/Flux) with Kotlin Coroutines (suspend)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
 
     // For ViewModel support with Hilt (specifically for @HiltViewModel and ViewModel lifecycle)
     // This is implicitly included with hilt-android, but sometimes explicit inclusion

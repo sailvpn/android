@@ -1,7 +1,10 @@
 package com.illiad.troad
 
 object Consts {
-    const val TAG = "TroadService"
+    const val TS = "TroadService"
+    const val TM = "TokenManager"
+    const val CM = "CertManager"
+    const val DH = "DtlsHandler"
 
     const val TUN_IP = "10.8.0.2"
     const val DNS1 = "8.8.8.8"
@@ -10,12 +13,6 @@ object Consts {
 
     const val ACTION_CONNECT = "qmt7e"
     const val ACTION_DISCONNECT = "dtpov"
-
-    // Keys for passing parameters via Intent extras
-    const val EXTRA_SERVER_ADDRESS = "mjupy"
-    const val EXTRA_SERVER_PORT = "yrqvm"
-    const val EXTRA_SHARED_SECRET = "ebhel"
-
 
     const val NOTIFICATION_CHANNEL_ID = "TroadService"
     const val NOTIFICATION_CHANNEL_NAME = "Troad"
@@ -27,5 +24,15 @@ object Consts {
     const val ACTION_VPN_STATUS_BROADCAST = "zsg35"
     const val EXTRA_STATUS_MESSAGE = "gcifu"
     const val EXTRA_IS_CONNECTED = "zprvu"
+
+    const val MIN: Int = 1
+    const val MAX: Int = 64 // important, maximum value 128
+
+    // set buffer size to 1310720 (65536*20) to ensure that buffer limit can never be equal to buffer capacity in read mode
+    // this is how we decide if a buffer is in read mode (limit < capacity), or in write mode (limit == capacity)
+    const val NET_OUT_SIZE: Int = 1310720
+    const val NET_IN_SIZE: Int = 1310720
+    const val APP_IN_SIZE: Int = 1310720
+    const val FRAGMENT_SIZE: Int = 1300
 
 }
