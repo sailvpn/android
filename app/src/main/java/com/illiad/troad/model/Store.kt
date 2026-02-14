@@ -28,6 +28,7 @@ object StoreKeys {
     val USERNAME = stringPreferencesKey("username")
     val PASSWORD = stringPreferencesKey("password")
     val DURATION = longPreferencesKey("duration")
+    val INTERVAL = longPreferencesKey("interval")
 
 }
 
@@ -37,8 +38,8 @@ class TroadStore(appContext: Context) {
     private val context = appContext.applicationContext
 
     val serverDomainFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.SERVER_DOMAIN] ?: ""
+        .map { settings ->
+            settings[StoreKeys.SERVER_DOMAIN] ?: ""
         }
 
     suspend fun saveServerDomain(domain: String) {
@@ -48,8 +49,8 @@ class TroadStore(appContext: Context) {
     }
 
     val serverPortFlow: Flow<Int> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.SERVER_PORT] ?: 1080
+        .map { settings ->
+            settings[StoreKeys.SERVER_PORT] ?: 1080
         }
 
     suspend fun saveServerPort(port: Int) {
@@ -68,15 +69,15 @@ class TroadStore(appContext: Context) {
     }
 
     val selectedCryptoFlow: Flow<Cryptos> = context.dataStore.data
-        .map { preferences ->
+        .map { settings ->
             val savedValue =
-                preferences[StoreKeys.SELECTED_CRYPTO] ?: Cryptos.JWT2.value // Default to JWT2
+                settings[StoreKeys.SELECTED_CRYPTO] ?: Cryptos.JWT2.value // Default to JWT2
             Cryptos.fromValue(savedValue).orElse(Cryptos.JWT2)
         }
 
     suspend fun saveCryptoSelection(crypto: Cryptos) {
-        context.dataStore.edit { preferences ->
-            preferences[StoreKeys.SELECTED_CRYPTO] = crypto.value ?: ""
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.SELECTED_CRYPTO] = crypto.value
         }
     }
 
@@ -92,8 +93,8 @@ class TroadStore(appContext: Context) {
     }
 
     val sharedSecretFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.SHARED_SECRET] ?: "password"
+        .map { settings ->
+            settings[StoreKeys.SHARED_SECRET] ?: "password"
         }
 
     suspend fun saveSharedSecret(secret: String) {
@@ -103,8 +104,8 @@ class TroadStore(appContext: Context) {
     }
 
     val jwtFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.JWT_TOKEN] ?: ""
+        .map { settings ->
+            settings[StoreKeys.JWT_TOKEN] ?: ""
         }
 
     suspend fun saveJwt(token: String) {
@@ -114,8 +115,8 @@ class TroadStore(appContext: Context) {
     }
 
     val usernameFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.USERNAME] ?: ""
+        .map { settings ->
+            settings[StoreKeys.USERNAME] ?: ""
         }
 
     suspend fun saveUsername(userName: String) {
@@ -126,8 +127,8 @@ class TroadStore(appContext: Context) {
     }
 
     val passwordFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.PASSWORD] ?: ""
+        .map { settings ->
+            settings[StoreKeys.PASSWORD] ?: ""
         }
 
     suspend fun savePassword(password: String) {
@@ -137,14 +138,30 @@ class TroadStore(appContext: Context) {
     }
 
     val durationFlow: Flow<Long> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.DURATION] ?: 10080L
+        .map { settings ->
+            settings[StoreKeys.DURATION] ?: 60L
         }
 
+    suspend fun saveDuration(duration: Long) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.DURATION] = duration
+        }
+    }
+
+    val intervalFlow: Flow<Long> = context.dataStore.data
+        .map { settings ->
+            settings[StoreKeys.INTERVAL] ?: 5L
+        }
+
+    suspend fun saveInterval(interval: Long) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.INTERVAL] = interval
+        }
+    }
 
     val tunIpFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[StoreKeys.TUN_IP] ?: "10.0.2.2"
+        .map { settings ->
+            settings[StoreKeys.TUN_IP] ?: "10.0.2.2"
         }
 
     suspend fun saveTunIp(ip: String) {
@@ -155,17 +172,3 @@ class TroadStore(appContext: Context) {
 
     // ... similar flows and save functions for serverPort, sharedSecret ...
 }
-
-// In your ViewModel:
-// class ProxySettingsViewModel(private val settingsRepository: SettingsRepository) : ViewModel() {
-//     val serverDomain: StateFlow<String> = settingsRepository.serverDomainFlow
-//         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-//
-//     fun onDomainChange(newDomain: String) {
-//         viewModelScope.launch {
-//             settingsRepository.saveServerDomain(newDomain)
-//         }
-//         // ...
-//     }
-//     // ...
-// }
