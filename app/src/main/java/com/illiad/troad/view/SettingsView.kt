@@ -46,8 +46,8 @@ fun SettingsView(viewModel: SettingsViewModel) {
     val secretInput by viewModel.uiSharedSecretInput.collectAsState()
 
     val cryptoSelected by viewModel.selectedCrypto.collectAsState()
-    val autoRenewal by viewModel.autoRenewal.collectAsState()
-
+    // State for Enum-based Dropdown
+    val renewSelection by viewModel.autoRenew.collectAsState()
     if (showCaCertDialog) {
         ConfigCaCertDialog(
             onDismiss = { showCaCertDialog = false },
@@ -185,42 +185,17 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 }
             }
             if (cryptoSelected == Cryptos.JWT) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Token Renewal Mode",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        SegmentedButton(
-                            selected = !autoRenewal,
-                            onClick = { viewModel.onAutoRenewalChecked(false) },
-                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                            icon = { /* Optional: Icon(Icons.Default.Edit, null) */ }
-                        ) {
-                            Text("Manual")
-                        }
-                        SegmentedButton(
-                            selected = autoRenewal,
-                            onClick = { viewModel.onAutoRenewalChecked(true) },
-                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                            icon = { /* Optional: Icon(Icons.Default.AutoMode, null) */ }
-                        ) {
-                            Text("Auto-Renew")
+                Column {
+                    Text("Token Renew")
+                    viewModel.autoRenewOptions.forEach { option ->
+                        Row(Modifier.clickable { viewModel.onAutoRenewalChanged(option) }) {
+                            RadioButton(
+                                selected = (option == renewSelection),
+                                onClick = { viewModel.onAutoRenewalChanged(option) }
+                            )
+                            Text(text = option.name)
                         }
                     }
-
-                    // Contextual Hint
-                    Text(
-                        text = if (autoRenewal) "Proxy will handle token acquisition." else "Paste your token manually in Config JWT.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 
@@ -247,7 +222,7 @@ fun CryptoSettingsItem(viewModel: SettingsViewModel) {
 
         // The clickable item showing current selection
         ListItem(
-            headlineContent = { Text(currentSelection.value ?: "Select Method") },
+            headlineContent = { Text(currentSelection.value) },
             supportingContent = { Text("Choose your preferred encryption") },
             trailingContent = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
             modifier = Modifier.clickable { showDialog = true }

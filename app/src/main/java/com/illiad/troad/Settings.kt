@@ -1,5 +1,7 @@
 package com.illiad.troad
 
+import com.illiad.troad.model.AutoRenew
+import com.illiad.troad.model.Duration
 import com.illiad.troad.service.security.Cryptos
 
 data class Settings(
@@ -9,8 +11,8 @@ data class Settings(
     val crypto: Cryptos,
     val secret: String?,
     val jwt: String?,
-    val autoRenew: Boolean?,
     val username: String?,
     val password: String?,
-    val duration: Long?
+    val duration: Duration?,
+    val autoRenew: AutoRenew?
 )

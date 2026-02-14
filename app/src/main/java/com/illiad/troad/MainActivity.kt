@@ -18,6 +18,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.CM
+import com.illiad.troad.model.AutoRenew
+import com.illiad.troad.model.Duration
 import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
 import com.illiad.troad.model.SettingsViewModel
@@ -153,10 +155,10 @@ class MainActivity : ComponentActivity() {
                 tStore.selectedCryptoFlow,
                 tStore.sharedSecretFlow,
                 tStore.jwtFlow,
-                tStore.autoRenewalFlow,
                 tStore.usernameFlow,
                 tStore.passwordFlow,
-                tStore.durationFlow
+                tStore.durationFlow,
+                tStore.autoRenewFlow
             ) { v ->
                 // This data class acts as a snapshot of your current settings
                 Settings(
@@ -166,10 +168,10 @@ class MainActivity : ComponentActivity() {
                     v[3] as Cryptos,
                     v[4] as String,
                     v[5] as String,
-                    v[6] as Boolean,
+                    v[6] as String,
                     v[7] as String,
-                    v[8] as String,
-                    v[9] as Long
+                    v[8] as Duration,
+                    v[9] as AutoRenew
                 )
             }.collectLatest { settings ->
                 // This block runs whenever ANY of the 6 settings change

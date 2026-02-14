@@ -115,7 +115,7 @@ class TokenManager private constructor(context: Context) {
             Log.i(TM, "Token management disabled (crypto != JWT)")
             return
         }
-        if (Utils.settings!!.autoRenew == true) {
+        if (Utils.settings!!.autoRenew!!.minutes > 0L) {
             Log.i(TM, "Automatic token mode enabled (tokenMode=auto)")
             val expiresAt = getExpireEpochMilli(Utils.settings!!.jwt)
 
@@ -131,7 +131,7 @@ class TokenManager private constructor(context: Context) {
                     TokenGenerateRequest(
                         username = username,
                         password = password,
-                        expirationMinutes = Utils.settings!!.duration
+                        expirationMinutes = Utils.settings!!.duration!!.minutes
                     )
                 )
 
@@ -150,7 +150,7 @@ class TokenManager private constructor(context: Context) {
                     val requestBytes = objMapper.writeValueAsBytes(
                         TokenGenerateRequest(
                             currentToken = Utils.settings!!.jwt,
-                            expirationMinutes = Utils.settings!!.duration
+                            expirationMinutes = Utils.settings!!.duration!!.minutes
                         )
                     )
                     postGenerate(requestBytes)
@@ -191,7 +191,7 @@ class TokenManager private constructor(context: Context) {
                     val requestBytes = objMapper.writeValueAsBytes(
                         TokenGenerateRequest(
                             currentToken = Utils.settings!!.jwt,
-                            expirationMinutes = Utils.settings!!.duration
+                            expirationMinutes = Utils.settings!!.duration!!.minutes
                         )
                     )
 

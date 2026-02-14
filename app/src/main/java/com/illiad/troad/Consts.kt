@@ -5,6 +5,7 @@ object Consts {
     const val TM = "TokenManager"
     const val CM = "CertManager"
     const val DH = "DtlsHandler"
+    const val VM = "SettingsViewModel"
 
     const val TUN_IP = "10.8.0.2"
     const val DNS1 = "8.8.8.8"

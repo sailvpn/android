@@ -11,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
+import com.illiad.troad.Consts.VM
 import com.illiad.troad.service.TroadService
 import com.illiad.troad.service.security.Cryptos
 import kotlinx.coroutines.FlowPreview
@@ -61,12 +62,16 @@ class SettingsViewModel(
         }
     }
 
-    val autoRenewal: StateFlow<Boolean> = tStore.autoRenewalFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val duration: StateFlow<Duration> = tStore.durationFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Duration.DEFAULT)
 
-    fun onAutoRenewalChecked(checked: Boolean) {
+    val autoRenewOptions = AutoRenew.entries
+    val autoRenew: StateFlow<AutoRenew> = tStore.autoRenewFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AutoRenew.DEFAULT)
+
+    fun onAutoRenewalChanged(changed: AutoRenew) {
         viewModelScope.launch {
-            tStore.saveAutoRenewal(checked)
+            tStore.saveAutoRenew(changed)
         }
     }
 
@@ -237,7 +242,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 tStore.saveCaCert(certContent)
-                Log.d("SettingsViewModel", "CA Cert saved successfully")
+                Log.d(VM, "CA Cert saved successfully")
             } catch (e: Exception) {
                 errorMessage = "Failed to save CA Cert: ${e.localizedMessage}"
             }
@@ -248,14 +253,25 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 tStore.saveJwt(jwtContent)
-                Log.d("SettingsViewModel", "JWT saved successfully")
+                Log.d(VM, "JWT saved successfully")
             } catch (e: Exception) {
                 errorMessage = "Failed to save JWT: ${e.localizedMessage}"
             }
         }
     }
 
-    suspend fun acquireJwt(duration: Int): Boolean {
+    suspend fun saveDuration(duration: Long) {
+        viewModelScope.launch {
+            try {
+                tStore.saveDuration(duration)
+                Log.d(VM, "Duratiuon saved successfully")
+            } catch (e: Exception) {
+                errorMessage = "Failed to save JWT: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    suspend fun acquireJwt(duration: Long): Boolean {
         return true
     }
 

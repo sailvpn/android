@@ -23,12 +23,11 @@ object StoreKeys {
     val SHARED_SECRET = stringPreferencesKey("shared_secret")
     val TUN_IP = stringPreferencesKey("tun_ip")
     val CA_CERT = stringPreferencesKey("ca_cert")
-    val AUTO_RENEWAL = booleanPreferencesKey("auto_renewal")
     val JWT_TOKEN = stringPreferencesKey("jwt_token")
     val USERNAME = stringPreferencesKey("username")
     val PASSWORD = stringPreferencesKey("password")
     val DURATION = longPreferencesKey("duration")
-    val INTERVAL = longPreferencesKey("interval")
+    val AUTORENEW = longPreferencesKey("auto_renew")
 
 }
 
@@ -70,25 +69,12 @@ class TroadStore(appContext: Context) {
 
     val selectedCryptoFlow: Flow<Cryptos> = context.dataStore.data
         .map { settings ->
-            val savedValue =
-                settings[StoreKeys.SELECTED_CRYPTO] ?: Cryptos.JWT2.value // Default to JWT2
-            Cryptos.fromValue(savedValue).orElse(Cryptos.JWT2)
+            Cryptos.fromValue(settings[StoreKeys.SELECTED_CRYPTO]).orElse(Cryptos.JWT2)
         }
 
     suspend fun saveCryptoSelection(crypto: Cryptos) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SELECTED_CRYPTO] = crypto.value
-        }
-    }
-
-    val autoRenewalFlow: Flow<Boolean> = context.dataStore.data
-        .map { settings ->
-            settings[StoreKeys.AUTO_RENEWAL] ?: false
-        }
-
-    suspend fun saveAutoRenewal(checked: Boolean) {
-        context.dataStore.edit { settings ->
-            settings[StoreKeys.AUTO_RENEWAL] = checked
         }
     }
 
@@ -137,9 +123,9 @@ class TroadStore(appContext: Context) {
         }
     }
 
-    val durationFlow: Flow<Long> = context.dataStore.data
+    val durationFlow: Flow<Duration> = context.dataStore.data
         .map { settings ->
-            settings[StoreKeys.DURATION] ?: 60L
+            Duration.fromMinutes(settings[StoreKeys.DURATION] ?: Duration.DEFAULT.minutes)
         }
 
     suspend fun saveDuration(duration: Long) {
@@ -148,14 +134,14 @@ class TroadStore(appContext: Context) {
         }
     }
 
-    val intervalFlow: Flow<Long> = context.dataStore.data
+    val autoRenewFlow: Flow<AutoRenew> = context.dataStore.data
         .map { settings ->
-            settings[StoreKeys.INTERVAL] ?: 5L
+            AutoRenew.fromMinutes(settings[StoreKeys.AUTORENEW] ?: AutoRenew.DEFAULT.minutes)
         }
 
-    suspend fun saveInterval(interval: Long) {
+    suspend fun saveAutoRenew(autoRenew: AutoRenew) {
         context.dataStore.edit { settings ->
-            settings[StoreKeys.INTERVAL] = interval
+            settings[StoreKeys.AUTORENEW] = autoRenew.minutes
         }
     }
 
