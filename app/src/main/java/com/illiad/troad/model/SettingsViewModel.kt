@@ -65,11 +65,22 @@ class SettingsViewModel(
     val duration: StateFlow<Duration> = tStore.durationFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Duration.DEFAULT)
 
+    suspend fun onsDurationChanged(changed: Duration) {
+        viewModelScope.launch {
+            try {
+                tStore.saveDuration(changed)
+                Log.d(VM, "Duratiuon saved successfully")
+            } catch (e: Exception) {
+                errorMessage = "Failed to save JWT: ${e.localizedMessage}"
+            }
+        }
+    }
+
     val autoRenewOptions = AutoRenew.entries
     val autoRenew: StateFlow<AutoRenew> = tStore.autoRenewFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AutoRenew.DEFAULT)
 
-    fun onAutoRenewalChanged(changed: AutoRenew) {
+    fun onAutoRenewChanged(changed: AutoRenew) {
         viewModelScope.launch {
             tStore.saveAutoRenew(changed)
         }
@@ -254,17 +265,6 @@ class SettingsViewModel(
             try {
                 tStore.saveJwt(jwtContent)
                 Log.d(VM, "JWT saved successfully")
-            } catch (e: Exception) {
-                errorMessage = "Failed to save JWT: ${e.localizedMessage}"
-            }
-        }
-    }
-
-    suspend fun saveDuration(duration: Long) {
-        viewModelScope.launch {
-            try {
-                tStore.saveDuration(duration)
-                Log.d(VM, "Duratiuon saved successfully")
             } catch (e: Exception) {
                 errorMessage = "Failed to save JWT: ${e.localizedMessage}"
             }

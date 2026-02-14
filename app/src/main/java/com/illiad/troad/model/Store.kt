@@ -128,9 +128,9 @@ class TroadStore(appContext: Context) {
             Duration.fromMinutes(settings[StoreKeys.DURATION] ?: Duration.DEFAULT.minutes)
         }
 
-    suspend fun saveDuration(duration: Long) {
+    suspend fun saveDuration(duration: Duration) {
         context.dataStore.edit { settings ->
-            settings[StoreKeys.DURATION] = duration
+            settings[StoreKeys.DURATION] = duration.minutes
         }
     }
 

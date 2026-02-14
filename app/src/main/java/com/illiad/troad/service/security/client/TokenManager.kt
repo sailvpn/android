@@ -117,6 +117,7 @@ class TokenManager private constructor(context: Context) {
         }
         if (Utils.settings!!.autoRenew!!.minutes > 0L) {
             Log.i(TM, "Automatic token mode enabled (tokenMode=auto)")
+            /**
             val expiresAt = getExpireEpochMilli(Utils.settings!!.jwt)
 
             // If no token present or expired
@@ -167,8 +168,11 @@ class TokenManager private constructor(context: Context) {
             } else {
                 Log.i(TM, "Failed to build token renewal request")
             }
+
+            **/
+            startAutoRenewal()
         }
-        startAutoRenewal()
+
     }
 
     /**

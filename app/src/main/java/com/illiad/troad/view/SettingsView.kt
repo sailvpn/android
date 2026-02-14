@@ -185,18 +185,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 }
             }
             if (cryptoSelected == Cryptos.JWT) {
-                Column {
-                    Text("Token Renew")
-                    viewModel.autoRenewOptions.forEach { option ->
-                        Row(Modifier.clickable { viewModel.onAutoRenewalChanged(option) }) {
-                            RadioButton(
-                                selected = (option == renewSelection),
-                                onClick = { viewModel.onAutoRenewalChanged(option) }
-                            )
-                            Text(text = option.name)
-                        }
-                    }
-                }
+                TokenRenewDropdown(viewModel)
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -255,7 +244,7 @@ fun CryptoSettingsItem(viewModel: SettingsViewModel) {
                                 onClick = null // Handled by Row selectable
                             )
                             Text(
-                                text = crypto.value ?: "",
+                                text = crypto.value,
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(start = 16.dp)
                             )
@@ -479,65 +468,46 @@ fun AcquireTokenDialog(
     )
 }
 
-
-/**
-@SuppressLint("ViewModelConstructorInComposable")
-@Preview(showBackground = true)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProxySettingsScreenPreview() {
-    MaterialTheme {
-        ProxySettingsScreen(viewModel())
-    }
-}
+fun TokenRenewDropdown(viewModel: SettingsViewModel) {
+    val currentRenew by viewModel.autoRenew.collectAsState()
+    var expanded by remember { mutableStateOf(false) }
 
-@SuppressLint("ViewModelConstructorInComposable")
-@Preview(showBackground = true)
-@Composable
-fun ProxySettingsScreenRunningPreview() {
-    val context = LocalContext.current
-    // Create a dummy Application instance for the preview
-    val dummyApplicationForPreview = object : Application() {
-        // You might override getApplicationContext() if needed,
-        // but often it's not strictly necessary if the ViewModel
-        // just needs *an* Application object to satisfy its constructor.
-        override fun getApplicationContext(): Context {
-            // You could return 'this' or 'context.applicationContext' from the preview
-            // Depending on what the ViewModel actually does with it.
-            // Returning the preview's application context is often safer.
-            return context.applicationContext
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = currentRenew.name, // Display the current enum name
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Token Auto Renew") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            viewModel.autoRenewOptions.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.name) },
+                    onClick = {
+                        viewModel.onAutoRenewalChanged(option)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                )
+            }
         }
     }
 
-    MaterialTheme {
-        val app = dummyApplicationForPreview
-        val tStore = PreviewTroadStore(context)
-        val previewViewModel = ProxySettingsViewModel(app, tStore)
-        previewViewModel.isProxyRunning = false
-        previewViewModel.uiServerDomain = "proxy.example.com"
-        previewViewModel.uiServerPort = "8080"
-        previewViewModel.uiSharedSecret = "mysecret" // Add for preview
-        ProxySettingsScreen(viewModel = previewViewModel)
-    }
-
 }
-
-// Dummy/Preview implementation of SettingsRepository for previews
-class PreviewTroadStore(private val context: Context) : TroadStore(context) {
-    // Override methods to return dummy data or do nothing for previews
-    override val serverDomainFlow: Flow<String> = flowOf("preview.domain.com")
-    override val serverPortFlow: Flow<Int> = flowOf(1234)
-    override val sharedSecretFlow: Flow<String> = flowOf("previewSecret")
-    // ... override other flows and suspend functions as needed for previews
-
-    override suspend fun saveServerDomain(domain: String) { /* No-op for preview */
-    }
-
-    override suspend fun saveServerPort(port: Int) { /* No-op for preview */
-    }
-
-    override suspend fun saveSharedSecret(secret: String) { /* No-op for preview */
-    }
-    // ...
-}
-
-**/
