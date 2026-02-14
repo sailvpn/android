@@ -65,7 +65,7 @@ class SettingsViewModel(
     val duration: StateFlow<Duration> = tStore.durationFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Duration.DEFAULT)
 
-    suspend fun onsDurationChanged(changed: Duration) {
+    fun onDurationChanged(changed: Duration) {
         viewModelScope.launch {
             try {
                 tStore.saveDuration(changed)
@@ -271,7 +271,7 @@ class SettingsViewModel(
         }
     }
 
-    suspend fun acquireJwt(duration: Long): Boolean {
+     fun acquireJwt() :Boolean {
         return true
     }
 

@@ -376,10 +376,6 @@ fun AcquireTokenDialog(
     var password by remember { mutableStateOf(viewModel.password) }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    // State for Enum-based Dropdown
-    var expanded by remember { mutableStateOf(false) }
-    var selectedDuration by remember { mutableStateOf(Duration.DEFAULT) }
-
     val scope = rememberCoroutineScope()
 
     AlertDialog(
@@ -414,37 +410,7 @@ fun AcquireTokenDialog(
                     },
                     singleLine = true
                 )
-
-                // 1-of-N Validity Period using Duration Enum
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = selectedDuration.label,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Validity Period") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        Duration.entries.forEach { duration ->
-                            DropdownMenuItem(
-                                text = { Text(duration.label) },
-                                onClick = {
-                                    selectedDuration = duration
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
+                DurationDropdown(viewModel)
             }
         },
         confirmButton = {
@@ -453,7 +419,6 @@ fun AcquireTokenDialog(
                     scope.launch {
                         // only duration is pass back, pther values are already stored back in viewModel
                         val success = viewModel.acquireJwt(
-                            selectedDuration.minutes
                         )
                         if (success) onDismiss()
                     }
@@ -466,6 +431,44 @@ fun AcquireTokenDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DurationDropdown(viewModel: SettingsViewModel) {
+    val currentDuration by viewModel.duration.collectAsState()
+    var expanded by remember { mutableStateOf(false) }
+
+// 1-of-N Validity Period using Duration Enum
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = currentDuration.label,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Validity Period") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            Duration.entries.forEach { duration ->
+                DropdownMenuItem(
+                    text = { Text(duration.label) },
+                    onClick = {
+                        viewModel.onDurationChanged(duration)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -501,7 +504,7 @@ fun TokenRenewDropdown(viewModel: SettingsViewModel) {
                 DropdownMenuItem(
                     text = { Text(option.name) },
                     onClick = {
-                        viewModel.onAutoRenewalChanged(option)
+                        viewModel.onAutoRenewChanged(option)
                         expanded = false
                     },
                     contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
