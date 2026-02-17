@@ -1,6 +1,5 @@
 package com.illiad.troad
 
-import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
-import com.illiad.troad.model.AutoRenew
 import com.illiad.troad.model.Duration
 import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
@@ -34,11 +32,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -84,7 +80,7 @@ class MainActivity : ComponentActivity() {
         val vpnPermitRequestLauncher =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 // This lambda is called when the activity started by vpnPermissionLauncher.launch() finishes
-                if (result.resultCode == Activity.RESULT_OK) {
+                if (result.resultCode == RESULT_OK) {
                     // User granted VPN permission
                     Log.d("VpnPermission", "VPN permission granted by user.")
                     splash()
