@@ -131,8 +131,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
 
     // bouncy castle for DTLS support, android had
-    implementation("org.bouncycastle:bcprov-jdk15to18:1.78")
-    implementation("org.bouncycastle:bctls-jdk15to18:1.78")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bctls-jdk18on:1.78.1") // Required for BCJSSE/DTLS
 
 
     // For ViewModel support with Hilt (specifically for @HiltViewModel and ViewModel lifecycle)

@@ -19,14 +19,14 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.*
 import javax.net.ssl.SSLEngineResult.HandshakeStatus.*
 
+
 /**
  * A Netty handler that manages DTLS communication over UDP using SSLEngine.
  */
 class DtlsHandler(remoteAddress: InetSocketAddress) : ChannelDuplexHandler() {
 
-    private val sslEngine: SSLEngine = CertManager.dtlsCtx!!.createSSLEngine(remoteAddress.hostString, remoteAddress.port).apply {
-        useClientMode = true
-    }
+    val sslEngine = DtlsEngineFactory.createEngine(CertManager.dtlsCtx!!, remoteAddress.hostString, remoteAddress.port)
+
 
     private val netin: ByteBuffer = ByteBuffer.allocate(NET_IN_SIZE)
     private val appin: ByteBuffer = ByteBuffer.allocate(APP_IN_SIZE)
