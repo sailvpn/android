@@ -10,33 +10,39 @@ import com.illiad.troad.Consts.TM
 import com.illiad.troad.Utils
 import com.illiad.troad.model.TroadStore
 import com.illiad.troad.service.security.CertManager
+import com.illiad.troad.service.security.Cryptos
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.netty.buffer.Unpooled
 import io.netty.handler.codec.http.HttpHeaderNames
 import io.netty.handler.codec.http.HttpHeaderValues
-import reactor.core.Disposable
-import reactor.core.publisher.Flux
+import kotlinx.coroutines.reactor.mono
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
 import reactor.netty.http.HttpProtocol
 import reactor.netty.http.client.HttpClient
 import reactor.netty.resources.ConnectionProvider
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.time.Instant
-
+import java.util.Timer
+import java.util.TimerTask
 import kotlin.concurrent.Volatile
+import kotlin.concurrent.scheduleAtFixedRate
 
-import kotlinx.coroutines.reactor.mono
-import reactor.core.scheduler.Schedulers
-
-// 1. Change 'object' to 'class' with a primary constructor
 class TokenManager private constructor(context: Context) {
 
     // Store applicationContext to prevent leaking an Activity context
     private val appContext = context.applicationContext
     private val tStore by lazy { TroadStore(appContext) }
     private val objMapper: ObjectMapper = createObjectMapper()
+    private var interval: Long = 0L
+
+    @Volatile
+    private var running = false
+
+    @Volatile
+    private var renewer: TimerTask? = null
 
     // 1. Define the client using the lazy delegate
     private val client: HttpClient by lazy {
@@ -55,11 +61,23 @@ class TokenManager private constructor(context: Context) {
             }
     }
 
-    @Volatile
-    private var running = false
+    fun manageRenew(renew: Long) {
 
-    @Volatile
-    private var renewDisposable: Disposable? = null
+        // do nothing if renew interval hasn't changed
+        if (renew != interval) {
+            interval = renew
+            renewer?.cancel()
+            if (interval > 0L && Cryptos.JWT == Utils.settings?.crypto) {
+                Log.i(TM, " update automatic token renew")
+                renewer = Timer().scheduleAtFixedRate(interval, interval) {
+                    doAutoRenew()
+                }
+                running = true
+            } else {
+                running = false
+            }
+        }
+    }
 
     /**
      * Centralized POST to token/generate and parse into TokenHolder.
@@ -109,115 +127,59 @@ class TokenManager private constructor(context: Context) {
      * Initialize token management - acquire initial token and start renewal
      */
     @Throws(JsonProcessingException::class)
-    fun initialize() {
-        // Structural equality check with '==' (handles null safely)
-        if (Utils.settings?.crypto?.value != "JWT") {
-            Log.i(TM, "Token management disabled (crypto != JWT)")
+    fun doAutoRenew() {
+        try {
+
+            if (Utils.settings!!.jwt != null) {
+                val jwt = Utils.settings!!.jwt
+                if (!jwt!!.isEmpty()) {
+                    val expiresAt = getExpireEpochMilli(jwt)
+
+                    val now = Instant.now()
+                    // If no token present or expired
+                    if (now.isBefore(expiresAt) && Duration.between(now, expiresAt)
+                            .toMinutes() < 10 * interval
+                    ) {
+                        val requestBytes = objMapper.writeValueAsBytes(
+                            TokenGenerateRequest(
+                                currentToken = jwt,
+                                expirationMinutes = Utils.settings!!.duration?.minutes
+                                    ?: com.illiad.troad.model.Duration.DEFAULT.minutes
+                            )
+                        )
+                        // block() is still available in Kotlin for Reactor types
+                        postGenerate(requestBytes)
+                            .timeout(Duration.ofSeconds(10))
+                            .block()
+                        return
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        // username/password as the last resort
+        val username = Utils.settings!!.username
+        val password = Utils.settings!!.password
+
+        if (!(username.isNullOrEmpty() || password.isNullOrEmpty())) {
+            val requestBytes = objMapper.writeValueAsBytes(
+                TokenGenerateRequest(
+                    username = username,
+                    password = password,
+                    expirationMinutes = Utils.settings!!.duration!!.minutes
+                )
+            )
+
+            // block() is still available in Kotlin for Reactor types
+            postGenerate(requestBytes)
+                .timeout(Duration.ofSeconds(10))
+                .block()
             return
         }
-        if (Utils.settings!!.autoRenew!!.minutes > 0L) {
-            Log.i(TM, "Automatic token mode enabled (tokenMode=auto)")
-            /**
-            val expiresAt = getExpireEpochMilli(Utils.settings!!.jwt)
-
-            // If no token present or expired
-            if (Instant.now().isAfter(expiresAt)) {
-                val username = Utils.settings!!.username
-                val password = Utils.settings!!.password
-
-                if (username.isNullOrEmpty() || password.isNullOrEmpty()) {
-                    throw IllegalStateException("Automatic token mode requires username/password when no valid token is available")
-                }
-                val requestBytes = objMapper.writeValueAsBytes(
-                    TokenGenerateRequest(
-                        username = username,
-                        password = password,
-                        expirationMinutes = Utils.settings!!.duration!!.minutes
-                    )
-                )
-
-                try {
-                    // block() is still available in Kotlin for Reactor types
-                    postGenerate(requestBytes)
-                        .timeout(Duration.ofSeconds(10))
-                        .block()
-
-                } catch (e: Exception) {
-                    throw IllegalStateException("Failed to acquire initial token", e)
-                }
-            } else if (Duration.between(Instant.now(), expiresAt).toMinutes() < 1080L) {
-                // Proactively renew asynchronously
-                try {
-                    val requestBytes = objMapper.writeValueAsBytes(
-                        TokenGenerateRequest(
-                            currentToken = Utils.settings!!.jwt,
-                            expirationMinutes = Utils.settings!!.duration!!.minutes
-                        )
-                    )
-                    postGenerate(requestBytes)
-                        .timeout(Duration.ofSeconds(10))
-                        .block()
-
-                } catch (e: JsonProcessingException) {
-                    Log.e(TM, "Failed to serialize renewal request", e)
-                    throw e
-                } catch (e: Exception) {
-                    Log.e(TM, "Failed to renew token", e)
-                    throw e
-                }
-            } else {
-                Log.i(TM, "Failed to build token renewal request")
-            }
-
-            **/
-            startAutoRenewal()
-        }
+        throw Exception("Failed renewing token!")
 
     }
 
-    /**
-     * Start periodic token renewal using Reactor's Flux.interval and track the Disposable.
-     */
-    private fun startAutoRenewal() {
-        if (running) return
-        running = true
-
-        val renewInterval = 60L
-        Log.i(TM, "Starting token renewal every {renewInterval} minutes")
-
-        renewDisposable = Flux.interval(
-            Duration.ofMinutes(renewInterval),
-            Duration.ofMinutes(renewInterval),
-            Schedulers.parallel()
-        )
-            .flatMap { tick ->
-                try {
-                    val requestBytes = objMapper.writeValueAsBytes(
-                        TokenGenerateRequest(
-                            currentToken = Utils.settings!!.jwt,
-                            expirationMinutes = Utils.settings!!.duration!!.minutes
-                        )
-                    )
-
-                    postGenerate(requestBytes)
-                        .timeout(Duration.ofSeconds(10))
-                } catch (e: JsonProcessingException) {
-                    Log.e(TM, "Failed to serialize renewal request", e)
-                    Mono.empty()
-                }
-            }
-            .subscribe()
-    }
-
-    /**
-     * Stop token renewal
-     */
-    fun shutdown() {
-        running = false
-        if (renewDisposable != null && !renewDisposable!!.isDisposed()) {
-            renewDisposable!!.dispose()
-        }
-    }
 
     private fun getExpireEpochMilli(jwt: String?): Instant {
         // .get() on an AtomicReference or custom wrapper

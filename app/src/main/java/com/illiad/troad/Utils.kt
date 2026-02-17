@@ -12,8 +12,6 @@ object Utils {
 
     var settings: Settings? = null
 
-    val settingState = MutableStateFlow(settings);
-
     /** The [android.os.ParcelFileDescriptor] for the VPN tunnel interface provided by the Android system. Null if the VPN is not prepared or has been shut down. */
     var vpnInterface: ParcelFileDescriptor? = null
 
