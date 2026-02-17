@@ -130,6 +130,11 @@ dependencies {
     // Bridges Project Reactor (Mono/Flux) with Kotlin Coroutines (suspend)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
 
+    // bouncy castle for DTLS support, android had
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.78")
+    implementation("org.bouncycastle:bctls-jdk15to18:1.78")
+
+
     // For ViewModel support with Hilt (specifically for @HiltViewModel and ViewModel lifecycle)
     // This is implicitly included with hilt-android, but sometimes explicit inclusion
     // or ensuring compatibility with androidx.hilt:hilt-navigation-compose might be needed
