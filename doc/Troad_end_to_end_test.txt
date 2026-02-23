@@ -1,0 +1,50 @@
+4. End-to-End Testing Strategy
+
+1.Start Simple: Don't try to debug by just opening a web browser. The traffic is complex (multiple TCP connections, DNS over UDP, etc.).
+
+2.Use curl or netcat: Use a terminal app on your Android device (like Termux) to generate simple, predictable traffic.•Test TCP: Run curl -v http://example.com. 
+This creates a single TCP connection to port 80. You can follow this single connection through your logs and debugger from DemuxHandler to ConnectHandler.•Test UDP: Run netcat -u 8.8.8.8 53. 
+Type something and hit enter. This sends a single UDP packet. You can trace this through DemuxHandler to AsoHandler.
+
+3.Monitor Logcat: While running these tests, watch Logcat closely. Filter by your tags (DemuxHandler, ResHandler, etc.) to see the flow of data and spot where it stops or goes wrong.
+
+4.Use a Packet Capture App: For advanced debugging, use an app like "PCAPdroid" (which doesn't require root) on the same device. 
+You can see if your Troad app is successfully capturing traffic and if the outgoing traffic to your proxy server looks correct.
+
+===========================================================
+
+1. Does the Android Studio Emulator work as a virtual device?
+
+Yes, absolutely. The Android Emulator is a complete, sandboxed virtual device that runs on your host computer (your PC/Mac/Linux machine).
+	•It's a full Android OS: It runs a complete Android operating system stack, from the Linux kernel up to the system services and user interface.
+	•It has its own virtual hardware: It emulates a CPU (ARM or x86), memory (RAM), storage, screen, network card, GPS, sensors, and more.
+	•It's isolated: From the perspective of the Android OS running inside the emulator, it believes it is a real, physical phone. 
+	It is almost completely isolated from your host system's file system and processes, except for specific channels like ADB (Android Debug Bridge).
+
+
+2. Can the emulator perceive the host system's IP address?
+Yes, it can, via a special IP address: 10.0.2.2.This is a crucial concept for debugging network applications in the emulator. 
+The emulator sits behind a "virtual router" that handles the network address translation (NAT).
+
+Here's how the networking is laid out:
+	Emulator Networking Diagram
+		•Emulator's IP Address (10.0.2.15): The virtual device itself has its own IP address within its private virtual network.
+		
+		•Emulator's Gateway/Router (10.0.2.2): This is the magic address. From inside the emulator, 
+			the IP address 10.0.2.2 always refers to your host computer's loopback interface (i.e., 127.0.0.1 or localhost on your machine).
+		•Emulator's DNS Server (10.0.2.3): 
+			This is the address for the DNS server.
+			
+		•Host Loopback (127.0.0.1): 
+			This address on the host computer refers to the emulator itself. 
+
+Practical Example for Your Project:
+Let's say you are running your SOCKS5 proxy server directly on your host machine (your computer) for testing purposes, and it's listening on port 1080.
+				
+		•Your SOCKS5 server is listening at 127.0.0.1:1080 on your host machine.
+		
+		•In your Android app running on the emulator, you cannot connect to localhost:1080 or 127.0.0.1:1080. That would try to connect to the emulator's own loopback interface, where nothing is running.
+		
+		•Instead, your Android app must connect to 10.0.2.2:1080. When it does this, the emulator's virtual router will correctly forward the traffic to your host machine at 127.0.0.1:1080.
+		
+This setup is specifically designed so that you can run a backend server on your development machine and have your Android app in the emulator connect to it for seamless debugging and testing.
