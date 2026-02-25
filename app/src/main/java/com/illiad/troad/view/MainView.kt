@@ -17,12 +17,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.illiad.troad.R
+import com.illiad.troad.model.MainViewModel
 import com.illiad.troad.model.Screen
 import com.illiad.troad.model.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainView(viewModel: SettingsViewModel) {
+fun MainView(viewModel: MainViewModel) {
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(

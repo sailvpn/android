@@ -25,19 +25,19 @@ object HeaderEncoder{
         }
 
         val offset: ByteArray = SecretImp.offset()
-        val signLength: Short = SecretImp.cryptoLength!!
+        val signLength = SecretImp.cryptoLength
         // check if the crypto type is fixed length
         if (signLength > 0) {
             // the encryption returns a fixed-length signature, the length field contains the whole length(length + cryptoType + signature + offset CRLF).
             // 5 = 2 bytes for length + 1 byte for crypto type + 2 bytes for CRLF
-            byteBuf.writeShort((signLength + offset.size + 5).toShort().toInt() and 0xFFFF)
+            byteBuf.writeShort(signLength + offset.size + 5)
         } else {
             // the encryption returns a variable-length signature, the length field contain the length of the signature only(length + cryptoType + signature).
             // 3 = 2 bytes for length + 1 byte for crypto type
-            byteBuf.writeShort((secretBytes.size + 3).toShort().toInt() and 0xFFFF)
+            byteBuf.writeShort(secretBytes.size + 3)
         }
         // write crypto type, signature, and offset into ByteBuffer
-        byteBuf.writeByte(SecretImp.cryptoTypeByte!!.toInt())
+        byteBuf.writeByte(SecretImp.cryptoTypeByte)
         byteBuf.writeBytes(secretBytes)
         byteBuf.writeBytes(offset)
         byteBuf.writeBytes(CRLF)

@@ -1,12 +1,10 @@
 package com.illiad.troad.service
 
 import FildesAddress
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
+import android.app.*
 import android.content.Intent
 import android.net.VpnService
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.illiad.troad.Consts.ACTION_CONNECT
@@ -26,293 +24,283 @@ import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.TUN_IP
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
-import com.illiad.troad.Utils.fildesChannel
-import com.illiad.troad.Utils.vpnInterface
+import com.illiad.troad.Settings
+import com.illiad.troad.Utils
+import com.illiad.troad.model.Duration
+import com.illiad.troad.model.TroadStore
 import com.illiad.troad.service.channel.FildesChannel
 import com.illiad.troad.service.codec.ip.PacketDecoder
 import com.illiad.troad.service.handler.ip.DemuxHandler
+import com.illiad.troad.service.security.CertManager
+import com.illiad.troad.service.security.Cryptos
+import com.illiad.troad.service.security.client.TokenManager
 import io.netty.bootstrap.Bootstrap
+import io.netty.channel.Channel
 import io.netty.channel.ChannelInitializer
-import io.netty.channel.MultiThreadIoEventLoopGroup
-import io.netty.channel.nio.NioIoHandler
-import io.netty.util.concurrent.DefaultEventExecutorGroup
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import java.io.FileDescriptor
+import io.netty.channel.nio.NioEventLoopGroup
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import java.io.IOException
 
-/**
- * A [VpnService] that manages the VPN connection for the Troad application.
- *
- * This service is responsible for:
- * - Establishing and configuring the VPN tunnel.
- * - Handling the lifecycle of the VPN connection (start, stop).
- * - Managing a persistent notification to keep the service in the foreground.
- * - Reading and writing IP packets to the VPN interface using Netty.
- * - Broadcasting the VPN connection status to other parts of the app.
- */
 class TroadService : VpnService() {
 
-     // CoroutineScope for launching background tasks, using an IO dispatcher for network and file operations.
-     // SupervisorJob for managing coroutines within the service, allowing child coroutines to fail without canceling the entire scope.
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /**
-     * Called by the system when the service is first created.
-     * Initializes the notification channel.
-     */
+    private val tStore by lazy { TroadStore(applicationContext) }
+    private var settingsObserver: Job? = null
+    private var certManagerObserver: Job ? = null
+    private var tokenManager: TokenManager? = null
+    private var autoRenewObserver: Job? = null
+    private var cryptoTypeObserver: Job? =null
+
+    @Volatile
+    private var vpnInterface: ParcelFileDescriptor? = null
+
+    @Volatile
+    private var vpnChannel: Channel? = null
+
+    private var eventLoopGroup: NioEventLoopGroup? = null
+
     override fun onCreate() {
         super.onCreate()
+        observeSettings()
+        observeCertManager()
+        tokenManager = TokenManager.getInstance(applicationContext)
+        observeAutorenew()
+        observeCryptoType()
         Log.d(TS, "VPN Service Created.")
         createNotificationChannel()
     }
 
-    /**
-     * Called by the system every time a client starts the service using [startService].
-     * Handles incoming intents to connect or disconnect the VPN.
-     *
-     * @param intent The Intent supplied to [startService], which contains the action to perform.
-     * @param flags Additional data about this start request.
-     * @param startId A unique integer representing this specific request to start.
-     * @return The return value indicates what semantics the system should use for the service's current started state.
-     */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TS, "onStartCommand received: ${intent?.action}")
-        when (intent?.action) {
-            ACTION_CONNECT -> {
-                if (fildesChannel?.isActive == true) {
-                    Log.d(TS, "VPN already running.")
-                    return START_STICKY
-                }
+        val action = intent?.action
+        Log.d(TS, "onStartCommand received: $action")
 
-                if (prepareVpn()) {
-                    serviceScope.launch {
-                        startVpn(vpnInterface?.fileDescriptor!!)
-                    }
-                    startForeground(NOTIFICATION_ID, createNotification("VPN Connected"))
-                    Log.d(TS, "VPN connection established.")
+        when (action) {
+            ACTION_CONNECT -> handleConnect()
+            ACTION_DISCONNECT -> stopVpn()
+        }
+        return START_STICKY
+    }
+
+    private fun handleConnect() {
+        if (vpnInterface != null) {
+            Log.d(TS, "VPN already running.")
+            return
+        }
+
+        // 1. IMMEDIATELY start foreground to prevent ANR/System Kill
+        startForeground(NOTIFICATION_ID, createNotification("Connecting..."))
+
+        // 2. Offload heavy Netty/Vpn setup to IO thread
+        serviceScope.launch {
+            try {
+                if (establishVpnInterface()) {
+                    startNettyStack()
+                    updateNotification("VPN Connected and Active")
+                    broadcastStatus("Connected", true)
                 } else {
-                    Log.e(TS, "Failed to establish VPN connection.")
+                    Log.e(TS, "Failed to establish VPN interface.")
                     stopVpn()
-
                 }
-            }
-
-            ACTION_DISCONNECT -> {
-                Log.d(TS, "Disconnecting VPN.")
+            } catch (e: Exception) {
+                Log.e(TS, "Critical error during VPN startup", e)
                 stopVpn()
             }
         }
-        // If the service is killed, restart it with the last intent (if connect was successful)
-        // Or START_NOT_STICKY if you don't want it to auto-restart.
-        return if (fildesChannel?.isActive == true) START_STICKY else START_NOT_STICKY
     }
 
-    /**
-     * Creates the notification channel required for Android 8.0 (API 26) and above.
-     * This channel is used for the foreground service notification.
-     */
-    private fun createNotificationChannel() {
-        val serviceChannel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            NOTIFICATION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
-        )
-        val manager = getSystemService(NotificationManager::class.java)
-        manager?.createNotificationChannel(serviceChannel)
-    }
+    private fun establishVpnInterface(): Boolean {
+        return try {
+            Log.d(TS, "Preparing VPN interface at: $TUN_IP")
+            vpnInterface = Builder()
+                .setSession(getString(R.string.app_name))
+                .addAddress(TUN_IP, 24)
+                .addRoute("0.0.0.0", 0)
+                .addDnsServer(DNS1)
+                .addDnsServer(DNS2)
+                .addDisallowedApplication(packageName)
+                .setMtu(MTU)
+                .establish()
 
-    /**
-     * Builds the persistent notification shown to the user while the VPN is active.
-     * The notification provides status information and an action to disconnect the VPN.
-     *
-     * @param contentText The text to display in the notification body.
-     * @return A configured [Notification] object.
-     */
-    private fun createNotification(contentText: String): Notification {
-        // Intent to open the app when the notification is tapped
-        val openAppIntent = Intent(
-            this, MainActivity::class.java
-        ).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingOpenAppIntent = PendingIntent.getActivity(
-            this,
-            PENDING_INTENT_REQUEST_CODE_OPEN_APP,
-            openAppIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        // Intent for the "Disconnect" action
-        val disconnectIntent = Intent(this, TroadService::class.java).apply {
-            action = ACTION_DISCONNECT
-        }
-        val pendingDisconnectIntent = PendingIntent.getService(
-            this,
-            PENDING_INTENT_REQUEST_CODE_DISCONNECT,
-            disconnectIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.troy)
-            .setContentTitle(getString(R.string.app_name) + " VPN")
-            .setContentText(contentText)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingOpenAppIntent)
-            .setOngoing(true)
-            .addAction(
-                R.drawable.cross,
-                "Disconnect", pendingDisconnectIntent
-            )
-        // .setPublicVersion(publicNotification) // For lock screen visibility control (optional)
-        // .setProgress(0, 0, true) // Indeterminate progress (optional, if connecting)
-
-        // For Android 8.0 (API 26) and higher, channel ID is required.
-        // It's set in createNotificationChannel() and used by the builder.
-
-        return notificationBuilder.build()
-    }
-
-
-    /**
-     * Prepares and establishes the VPN interface.
-     * This method configures the VPN parameters like IP address, routes, DNS, and MTU using [VpnService.Builder].
-     * It requests user permission if this is the first time the VPN is being established.
-     *
-     * @return `true` if the VPN interface was established successfully, `false` otherwise.
-     */
-    private fun prepareVpn(): Boolean {
-
-        Log.d(TS, "Preparing VPN interface at: $TUN_IP")
-        val builder = Builder()
-            .setSession(getString(R.string.app_name))
-            .addAddress(TUN_IP, 24)
-            .addRoute("0.0.0.0", 0)
-            .addDnsServer(DNS1).addDnsServer(DNS2)
-            .addDisallowedApplication(packageName)
-            .setMtu(MTU)
-
-        try {
-            vpnInterface = builder.establish()
+            vpnInterface != null
         } catch (e: Exception) {
-            Log.e(TS, "Error establishing VPN interface", e)
-            sendBroadcast(
-                Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
-                    "status", "Error establishing VPN interface"
-                )
-            )
-            return false
+            Log.e(TS, "VpnService.Builder failed", e)
+            false
         }
-
-        if (vpnInterface == null) {
-            Log.e(TS, "VPN establish returned null. User might have denied permission.")
-            sendBroadcast(
-                Intent(ACTION_VPN_STATUS_BROADCAST).putExtra(
-                    "status", "PERMISSION_DENIED"
-                )
-            )
-            return false
-        }
-
-        return true
     }
 
-    /**
-     * Initializes and starts the Netty pipeline to handle traffic from the VPN file descriptor.
-     *
-     * The pipeline consists of:
-     * - [FildesChannel]: Reads raw IP packets from the VPN interface.
-     * - [PacketDecoder]: Decodes the raw bytes into Pcap4j [Packet] objects.
-     * - [DemuxHandler]: Processes the decoded packets and manages data forwarding.
-     *
-     * @param fd The [FileDescriptor] of the established VPN interface.
-     */
-    private fun startVpn(fd: FileDescriptor) {
-        val ioGroup = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
-        val decoderGroup = DefaultEventExecutorGroup(1)
-        val demuxGroup = DefaultEventExecutorGroup(3)
+    private suspend fun startNettyStack() = withContext(Dispatchers.IO) {
+        // Use a fixed thread count (2) to avoid Netty trying to read 'somaxconn' (SELinux fix)
+        eventLoopGroup = NioEventLoopGroup(2)
 
-        val b = Bootstrap()
-        fildesChannel = FildesChannel(null, fd)
-
-        b.group(ioGroup)
-            .channelFactory { fildesChannel }
+        val bootstrap = Bootstrap()
+            .group(eventLoopGroup)
+            // Replace NioSocketChannel with your custom FildesChannel if it wraps FileDescriptor
+            .channelFactory { FildesChannel(null, vpnInterface!!.fileDescriptor) }
             .handler(object : ChannelInitializer<FildesChannel>() {
                 override fun initChannel(ch: FildesChannel) {
-                    ch.pipeline()
-                        .addLast(decoderGroup, PacketDecoder())
-                        .addLast(demuxGroup, DemuxHandler)
+                    ch.pipeline().addLast(PacketDecoder())
+                    ch.pipeline().addLast(DemuxHandler)
                 }
             })
 
-        val fildesAddress = FildesAddress(fd)
-        b.connect(fildesAddress, fildesAddress)
-            .addListener { future ->
-                if (future.isSuccess) {
-                    Log.i(TS, "VPN connection established.")
-                    broadcastVpnStatus("Connected", fildesChannel?.isActive == true)
-                } else {
-                    Log.e(TS, "VPN connection failed", future.cause())
-                    broadcastVpnStatus("VPN connection failed", false)
-                    stopVpn()
-                }
-            }
+        // Netty's connect/bind can be slow on emulators; await() keeps it in this coroutine
+        val fildesAddress = FildesAddress(vpnInterface!!.fileDescriptor)
+        val future = bootstrap.connect(fildesAddress, fildesAddress).await()
+        if (future.isSuccess) {
+            vpnChannel = future.channel()
+            Log.d(TS, "Netty pipeline established.")
+        } else {
+            throw IOException("Netty failed to bind to TUN", future.cause())
+        }
     }
 
-    /**
-     * Stops the VPN service, cleans up resources, and stops the foreground notification.
-     * Call this when the VPN is meant to be fully shut down.
-     */
     private fun stopVpn() {
-        Log.i(TS, "stopVpnService called")
+        Log.d(TS, "Stopping VPN Service...")
+        broadcastStatus("Disconnected", false)
 
-        if (fildesChannel?.isActive == true) {
-            fildesChannel?.close()?.sync()?.addListener { future ->
-                {
-                    if (!future.isSuccess) {
-                        future.cause().printStackTrace()
-                    }
-                    Log.i(TS, "VPN connection closed.")
+        serviceScope.launch {
+            vpnChannel?.close()?.await()
+            eventLoopGroup?.shutdownGracefully()
+
+            withContext(Dispatchers.Main) {
+                try {
+                    vpnInterface?.close()
+                } catch (e: IOException) {
+                    Log.e(TS, "Error closing VPN interface", e)
                 }
+                vpnInterface = null
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
             }
         }
-        vpnInterface?.close()
-        vpnInterface = null
-        Log.i(TS, "VPN Service stopped")
-
-        stopSelf()
     }
 
-    /**
-     * Broadcasts the VPN status (message and connection state).
-     *
-     * @param message A descriptive message about the current status (e.g., "Connecting...", "Connected", "Error").
-     * @param connected True if the VPN is considered connected, false otherwise.
-     */
-    private fun broadcastVpnStatus(message: String, connected: Boolean) {
+    private fun broadcastStatus(message: String, isConnected: Boolean) {
         val intent = Intent(ACTION_VPN_STATUS_BROADCAST).apply {
             putExtra(EXTRA_STATUS_MESSAGE, message)
-            putExtra(EXTRA_IS_CONNECTED, connected)
+            putExtra(EXTRA_IS_CONNECTED, isConnected)
+            setPackage(packageName)
         }
         sendBroadcast(intent)
-        Log.d(TS, "VPN status broadcast: '$message', Connected: $connected")
-
     }
 
-    /**
-     * Called by the system to notify a service that it is no longer used and is being removed.
-     * Cleans up resources, stops the foreground notification, and broadcasts the disconnected status.
-     */
+    private fun updateNotification(text: String) {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.notify(NOTIFICATION_ID, createNotification(text))
+    }
+
+    private fun createNotification(contentText: String): Notification {
+        val openAppIntent = PendingIntent.getActivity(
+            this, PENDING_INTENT_REQUEST_CODE_OPEN_APP,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val disconnectIntent = PendingIntent.getService(
+            this, PENDING_INTENT_REQUEST_CODE_DISCONNECT,
+            Intent(this, TroadService::class.java).apply { action = ACTION_DISCONNECT },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.troy)
+            .setContentTitle("${getString(R.string.app_name)} VPN")
+            .setContentText(contentText)
+            .setOngoing(true)
+            .setContentIntent(openAppIntent)
+            .addAction(R.drawable.cross, "Disconnect", disconnectIntent)
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            NOTIFICATION_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_LOW // Low priority avoids annoying sounds on every update
+        )
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+    }
+
     override fun onDestroy() {
+        serviceScope.cancel()
+        settingsObserver?.cancel()
+        certManagerObserver?.cancel()
+        autoRenewObserver?.cancel()
+        cryptoTypeObserver?.cancel()
         super.onDestroy()
-
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        broadcastVpnStatus("Disconnected", false)
-        Log.i(TS, "VPN Service Destroyed.")
-        serviceScope.cancel() // Stop all observations when service is killed
     }
 
+    private fun observeSettings() {
+        settingsObserver?.cancel()
+        settingsObserver = serviceScope.launch {
+            // Combine all flows into a single configuration stream
+            combine(
+                tStore.serverDomainFlow,
+                tStore.serverPortFlow,
+                tStore.caCertFlow,
+                tStore.selectedCryptoFlow,
+                tStore.sharedSecretFlow,
+                tStore.jwtFlow,
+                tStore.usernameFlow,
+                tStore.passwordFlow,
+                tStore.durationFlow,
+                tStore.autoRenewFlow
+            ) { v ->
+                // This data class acts as a snapshot of your current settings
+                Settings(
+                    v[0] as String,
+                    v[1] as Int,
+                    v[2] as String,
+                    v[3] as Cryptos,
+                    v[4] as String,
+                    v[5] as String,
+                    v[6] as String,
+                    v[7] as String,
+                    v[8] as Duration,
+                )
+            }.collectLatest { settings ->
+                // This block runs whenever ANY of the 6 settings change
+                Utils.settings = settings
+            }
+        }
+    }
+
+    private fun observeCertManager() {
+        certManagerObserver?.cancel()
+        certManagerObserver = serviceScope.launch {
+            tStore.caCertFlow
+                .filter { cert -> cert.isNotEmpty() }
+                .collectLatest { cert ->
+                    CertManager.updateContext(cert)
+                }
+        }
+    }
+
+    private fun observeAutorenew() {
+        autoRenewObserver?.cancel()
+        autoRenewObserver = serviceScope.launch {
+            tStore.autoRenewFlow
+                .collectLatest { autoRenew ->
+                    tokenManager?.manageRenew(autoRenew.minutes)
+                }
+        }
+    }
+
+    private fun observeCryptoType() {
+        cryptoTypeObserver?.cancel()
+        cryptoTypeObserver = serviceScope.launch {
+            tStore.selectedCryptoFlow
+                .filter { crypt ->
+                    Cryptos.JWT != crypt
+                }
+                .collectLatest { crypt ->
+                    tokenManager?.manageRenew(0L)
+                }
+
+        }
+    }
 }

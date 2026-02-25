@@ -41,18 +41,9 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
             return
         }
 
-        // this is important to avoid ConcurrentModificationException
-        val localList = packets.toList()
-        val it = localList.iterator()
-        while (it.hasNext()) {
-            val packet = it.next()
-            if (packet == null) {
-                continue
-            }
-
-            val connection = Connection.extractConnetion(packet)
-            if (connection != null) {
-
+        for (packet in packets) {
+            if (packet != null) {
+                val connection = Connection.extractConnection(packet) ?: continue
                 val protocol = connection.protocol
                 // Filter out any packets that are not TCP or UDP.
                 if (protocol != IpNumber.TCP && protocol != IpNumber.UDP) {
@@ -133,9 +124,9 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
                     }
                 }
 
-            }
-            // TODO: handle non-IP packets
+                // TODO: handle non-IP packets
 
+            }
         }
     }
 

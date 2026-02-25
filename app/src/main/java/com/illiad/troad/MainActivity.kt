@@ -12,110 +12,64 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
-import com.illiad.troad.model.Duration
 import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
 import com.illiad.troad.model.SettingsViewModel
+import com.illiad.troad.model.MainViewModel
 import com.illiad.troad.model.SettingsViewModelFactory
-import com.illiad.troad.model.TroadStore
-import com.illiad.troad.service.security.CertManager
-import com.illiad.troad.service.security.Cryptos
-import com.illiad.troad.service.security.client.TokenManager
 import com.illiad.troad.view.MainView
 import com.illiad.troad.view.SettingsView
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private val settingsViewModel: SettingsViewModel by viewModels {
-        SettingsViewModelFactory(application)
-    }
-
-    // CoroutineScope for launching background tasks, using an IO dispatcher for network and file operations.
-    // SupervisorJob for managing coroutines within the service, allowing child coroutines to fail without canceling the entire scope.
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val tStore by lazy { TroadStore(applicationContext) }
-    private var settingsObserver: Job? = null
-    private var certManagerObserver: Job ? = null
-    private var tokenManager: TokenManager? = null
-    private var autoRenewObserver: Job? = null
-    private var cryptoTypeObserver: Job? =null
-
-
+    // 1. Lightweight ViewModel: Loads instantly with 0 disk I/O in init
+    private val mainViewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Connect the observer
-        val observer = MainActivityObserver(
-            onStartup = {
-                observeSettings()
-                observeCertManager()
-                tokenManager = TokenManager.getInstance(applicationContext)
-                observeAutorenew()
-                observeCryptoType()
-            },
-            onCleanup = {
-                serviceScope.cancel()
-                settingsObserver?.cancel()
-                certManagerObserver?.cancel()
-                autoRenewObserver?.cancel()
-                cryptoTypeObserver?.cancel()
-            })
-
-        lifecycle.addObserver(observer)
-
         val vpnPermitRequestLauncher =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-                // This lambda is called when the activity started by vpnPermissionLauncher.launch() finishes
                 if (result.resultCode == RESULT_OK) {
-                    // User granted VPN permission
-                    Log.d("VpnPermission", "VPN permission granted by user.")
+                    Log.d("VpnPermission", "VPN permission granted.")
                     splash()
-
                 } else {
-                    // User denied VPN permission or cancelled
-                    Log.w(
-                        "VpnPermission",
-                        "VPN permission denied by user. Result code: ${result.resultCode}"
-                    )
-                    // Handle denial (e.g., show a message, disable VPN features)
+                    Log.w("VpnPermission", "VPN permission denied.")
                 }
             }
 
         val prepareIntent = VpnService.prepare(this)
-
         if (prepareIntent != null) {
-            // Permission not yet granted, launch the system dialog
-            Log.d("VpnPermission", "Launching system dialog for VPN permission.")
             vpnPermitRequestLauncher.launch(prepareIntent)
         } else {
-            // Permission already granted
-            Log.d("VpnPermission", "VPN permission was already granted.")
             splash()
         }
-
     }
 
     private fun splash() {
         setContent {
             TroadTheme(darkTheme = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    when (settingsViewModel.currentScreen) {
-                        Screen.Main -> MainView(settingsViewModel)
-                        Screen.Settings -> SettingsView(settingsViewModel)
+                    // Use Crossfade for a smooth, lazy transition
+                    Crossfade(targetState = mainViewModel.currentScreen) { screen ->
+                        when (screen) {
+                            Screen.Main -> MainView(mainViewModel)
+                            Screen.Settings -> {
+                                // 2. Instantiates SettingsViewModel ONLY when the user clicks 'Settings'
+                                val settingsViewModel: SettingsViewModel = viewModel(
+                                    factory = SettingsViewModelFactory(application)
+                                )
+                                SettingsView(
+                                    viewModel = settingsViewModel,
+                                    onBack = { mainViewModel.navigateTo(Screen.Main) })
+                            }
+                        }
                     }
                 }
             }
@@ -127,104 +81,23 @@ class MainActivity : ComponentActivity() {
             if (intent?.action == ACTION_VPN_STATUS_BROADCAST) {
                 val message = intent.getStringExtra(Consts.EXTRA_STATUS_MESSAGE)
                 val isConnected = intent.getBooleanExtra(Consts.EXTRA_IS_CONNECTED, false)
-                // Update your UI here based on the message and isConnected state
-                settingsViewModel.updateVpnStatus(isConnected, message)
-                Log.d("MyActivity", "VPN Status Received: $message, Connected: $isConnected")
-                // e.g., myStatusTextView.text = message
-                // e.g., myConnectButton.isEnabled = !isConnected
+
+                // 3. Update the lightweight ViewModel instead of the heavy one
+                mainViewModel.updateVpnStatus(isConnected, message)
             }
-        }
-    }
-
-    private fun observeSettings() {
-        settingsObserver?.cancel()
-        settingsObserver = serviceScope.launch {
-            // Combine all flows into a single configuration stream
-            combine(
-                tStore.serverDomainFlow,
-                tStore.serverPortFlow,
-                tStore.caCertFlow,
-                tStore.selectedCryptoFlow,
-                tStore.sharedSecretFlow,
-                tStore.jwtFlow,
-                tStore.usernameFlow,
-                tStore.passwordFlow,
-                tStore.durationFlow,
-                tStore.autoRenewFlow
-            ) { v ->
-                // This data class acts as a snapshot of your current settings
-                Settings(
-                    v[0] as String,
-                    v[1] as Int,
-                    v[2] as String,
-                    v[3] as Cryptos,
-                    v[4] as String,
-                    v[5] as String,
-                    v[6] as String,
-                    v[7] as String,
-                    v[8] as Duration,
-                )
-            }.collectLatest { settings ->
-                // This block runs whenever ANY of the 6 settings change
-                Utils.settings = settings
-            }
-        }
-    }
-
-    private fun observeCertManager() {
-        certManagerObserver?.cancel()
-        certManagerObserver = serviceScope.launch {
-            tStore.caCertFlow
-                .filter { cert -> cert.isNotEmpty() }
-                .collectLatest { cert ->
-                    CertManager.updateContext(cert)
-                }
-        }
-    }
-
-    private fun observeAutorenew() {
-        autoRenewObserver?.cancel()
-        autoRenewObserver = serviceScope.launch {
-            tStore.autoRenewFlow
-                .collectLatest { autoRenew ->
-                    tokenManager?.manageRenew(autoRenew.minutes)
-                }
-        }
-    }
-
-    private fun observeCryptoType() {
-        cryptoTypeObserver?.cancel()
-        cryptoTypeObserver = serviceScope.launch {
-            tStore.selectedCryptoFlow
-                .filter { crypt ->
-                    Cryptos.JWT != crypt
-                }
-                .collectLatest { crypt ->
-                    tokenManager?.manageRenew(0L)
-                }
-
         }
     }
 
     override fun onResume() {
         super.onResume()
         val intentFilter = IntentFilter(ACTION_VPN_STATUS_BROADCAST)
-        // If using system-wide sendBroadcast in the service:
         ContextCompat.registerReceiver(
-            this, // Context
-            vpnStatusReceiver, intentFilter, ContextCompat.RECEIVER_EXPORTED // Specify exported
+            this, vpnStatusReceiver, intentFilter, ContextCompat.RECEIVER_EXPORTED
         )
     }
 
     override fun onPause() {
         super.onPause()
-        // If using system-wide:
         unregisterReceiver(vpnStatusReceiver)
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.cancel()
-    }
-
 }

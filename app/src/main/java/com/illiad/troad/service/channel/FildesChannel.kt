@@ -113,102 +113,53 @@ class FildesChannel(parent: Channel?, private val fd: FileDescriptor) : Abstract
     }
 
     override fun doBeginRead() {
-
-        if (isPaused) {
-            // We are waiting for the scheduled resume.
-            // The scheduled task will re-trigger doBeginRead.
-            logger.trace(
-                "{} in paused state.",
-                this
-            )
-            return
-        }
-
-        if (inputShutdown || !isActive) {
-            return
-        }
+        if (isPaused || inputShutdown || !isActive) return
 
         val allocHandle = unsafe().recvBufAllocHandle()
-        // assume your allocHandle from unsafe() is correctly reset or configured.
-        // let's explicitly reset messagesRead for this read attempt cycle.
-        // Essential if not done by unsafe().recvBufAllocHandle() for each "read cycle"
         allocHandle.reset(config())
 
-        var continueReading: Boolean
-        // alloc byteBuf once per read cycle
-        val byteBuf = allocHandle.allocate(config().allocator)
-        do {
-            try {
-                val bytesRead =
-                    byteBuf.writeBytes(nioInputStreamChannel, byteBuf.writableBytes())
+        val allocator = config().allocator
+        var firedRead = false
+
+        try {
+            while (allocHandle.continueReading()) {
+                val byteBuf = allocHandle.allocate(allocator)
+                val bytesRead = byteBuf.writeBytes(nioInputStreamChannel, byteBuf.writableBytes())
 
                 if (bytesRead > 0) {
+                    firedRead = true
                     allocHandle.lastBytesRead(bytesRead)
                     allocHandle.incMessagesRead(1)
-                    pipeline().fireChannelRead(byteBuf)
-                    // Continue reading based on allocator's decision
-                    continueReading = allocHandle.continueReading() && config().isAutoRead
+                    pipeline().fireChannelRead(byteBuf) // Hand over ownership to pipeline
                 } else if (bytesRead == 0) {
-                    // bytesRead == 0 (and buffer is still writable)
-                    // THIS IS THE CRITICAL 0-BYTE READ SCENARIO
-                    byteBuf.release() // Release the allocated buffer that wasn't used
-
-                    logger.trace(
-                        "{} read 0 bytes. Pause for {} ms.",
-                        this,
-                        ZERO_READ_PAUSE_MS
-                    )
-                    // pause the read loop
-                    isPaused = true
-
-                    // Schedule a task to clear the flag and re-trigger a read.
-                    // This task will run on the EventLoop, so it's non-blocking.
-                    eventLoop().schedule({
-                        // resume reading
-                        isPaused = false
-                        logger.trace(
-                            "{} pause ended.",
-                            this
-                        )
-                        // restart process 10 millseconds later
-                        pipeline().fireChannelReadComplete()
-                    }, ZERO_READ_PAUSE_MS, TimeUnit.MILLISECONDS)
-                    return // Exit doBeginRead without informing pipeline
-                } else { // bytesRead < 0, EOF
-                    allocHandle.lastBytesRead(-1) // Signal EOF to allocator
                     byteBuf.release()
-                    shutdownInput().addListener { future ->
-                        {
-                            if (!future.isSuccess) {
-                                logger.warn(
-                                    "Error shutdown Input after EOF",
-                                    future.cause()
-                                )
-                            }
-                        }
-                    }
-                    return // Exit doBeginRead, process stopped
+                    handleZeroRead()
+                    break
+                } else { // EOF
+                    byteBuf.release()
+                    allocHandle.lastBytesRead(-1)
+                    close(voidPromise())
+                    break
                 }
-            } catch (e: IOException) {
-                byteBuf.release()
-                pipeline().fireExceptionCaught(e)
-                // Shutdown logic as before
-                shutdownInput().addListener { future ->
-                    if (!future.isSuccess) {
-                        logger.warn(
-                            "Error shutdown Input after exception",
-                            future.cause()
-                        )
-                    }
-                }
-                // Stop on error
-                return // Exit doBeginRead after error, process stopped
             }
+        } catch (t: Throwable) {
+            pipeline().fireExceptionCaught(t)
+        } finally {
+            if (firedRead) {
+                pipeline().fireChannelReadComplete()
+            }
+        }
+    }
 
-        } while (continueReading)
-
-        // no more data to read, inform pipeline
-        // pipeline().fireChannelReadComplete()
+    private fun handleZeroRead() {
+        isPaused = true
+        eventLoop().schedule({
+            isPaused = false
+            // Re-trigger the read process
+            if (config().isAutoRead) {
+                pipeline().read()
+            }
+        }, ZERO_READ_PAUSE_MS, TimeUnit.MILLISECONDS)
     }
 
     override fun doWrite(buffer: ChannelOutboundBuffer) {

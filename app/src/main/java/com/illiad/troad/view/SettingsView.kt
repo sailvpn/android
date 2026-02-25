@@ -33,7 +33,10 @@ import androidx.compose.runtime.collectAsState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsView(viewModel: SettingsViewModel) {
+fun SettingsView(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit
+) {
     var passwordVisible by remember { mutableStateOf(false) }
 
     // State for managing popups
@@ -55,7 +58,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
         )
     }
 
-    if(showAcqJWTDialog) {
+    if (showAcqJWTDialog) {
         AcquireTokenDialog(
             onDismiss = { showAcqJWTDialog = false },
             viewModel = viewModel,
@@ -75,7 +78,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
             TopAppBar(
                 title = { Text("Server Settings") },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.navigateTo(Screen.Main) }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -156,7 +159,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
                 )
             }
 
-            if(cryptoSelected == Cryptos.JWT) {
+            if (cryptoSelected == Cryptos.JWT) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -191,7 +194,7 @@ fun SettingsView(viewModel: SettingsViewModel) {
             Spacer(modifier = Modifier.weight(1f))
 
             Button(
-                onClick = { viewModel.navigateTo(Screen.Main) },
+                onClick = onBack,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Return")
