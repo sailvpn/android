@@ -21,7 +21,7 @@ class RelayHandler(private val vpn: Channel) : SimpleChannelInboundHandler<ByteB
         if (!vpn.isActive) {
             // Vpn is not running
             // Close the backend connection as we can't process its data
-            Demux.removeSession(ctx.channel())
+            Demux.removeSession(Demux.getConnection(ctx.channel()))
             return
         }
 
@@ -43,11 +43,11 @@ class RelayHandler(private val vpn: Channel) : SimpleChannelInboundHandler<ByteB
 
     override fun channelInactive(ctx: ChannelHandlerContext) {
         ctx.fireChannelInactive()
-        Demux.removeSession(ctx.channel())
+        Demux.removeSession(Demux.getConnection(ctx.channel()))
     }
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
-        Demux.removeSession(ctx.channel())
+        Demux.removeSession(Demux.getConnection(ctx.channel()))
         cause.printStackTrace()
         // Close the connection when an exception is caught, as it might be in an unrecoverable state.
         ctx.close()

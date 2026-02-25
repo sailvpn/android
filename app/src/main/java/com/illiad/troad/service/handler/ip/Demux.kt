@@ -21,6 +21,10 @@ object Demux {
 
     fun getSession(connection: Connection): Session? = sessionMap[connection]
 
+    fun getConnection(channel: Channel): Connection? {
+        return channelToConnection[channel.id()]
+    }
+
     fun createSession(connection: Connection): Session {
         val session = Session(connection)
         sessionMap[connection] = session
@@ -33,7 +37,8 @@ object Demux {
         channelToConnection[channel.id()] = connection
     }
 
-    fun removeSession(connection: Connection): Boolean {
+    fun removeSession(connection: Connection?): Boolean {
+        if (connection == null) return false
         val session = sessionMap.remove(connection) ?: return false
 
         // Clean up reverse lookup

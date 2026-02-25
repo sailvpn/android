@@ -4,6 +4,8 @@ import io.netty.channel.Channel
 
 data class Session(val connection: Connection) {
     @Volatile
+    var isConnecting = false
+    @Volatile
     var channel: Channel? = null
     var aso: Channel? = null
     val lock = Any()

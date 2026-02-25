@@ -1,13 +1,17 @@
 package com.illiad.troad.service.handler.ip
 
-import com.illiad.troad.service.HandlerNamer
-import com.illiad.troad.service.handler.socks5.ConnectHandler
-import com.illiad.troad.service.handler.socks5.udp.AsoHandler
+import com.illiad.troad.service.handler.socks5.TcpHandler
+import com.illiad.troad.service.handler.socks5.udp.UdpHandler
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.socket.DatagramPacket
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.pcap4j.packet.IpPacket
 import org.pcap4j.packet.namednumber.IpNumber
 import java.net.InetSocketAddress
@@ -35,6 +39,13 @@ import java.nio.ByteBuffer
 
 @ChannelHandler.Sharable
 object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    override fun channelInactive(ctx: ChannelHandlerContext?) {
+        super.channelInactive(ctx)
+        scope.cancel()
+
+    }
 
     override fun channelRead0(ctx: ChannelHandlerContext?, packets: MutableList<IpPacket?>?) {
         if (ctx == null || packets == null || packets.isEmpty()) {
@@ -113,13 +124,15 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
                     if (session.channel == null) {
                         // null channel, establish channel
-                        if (protocol == IpNumber.TCP) {
-                            ctx.pipeline()?.addLast(HandlerNamer.name, ConnectHandler())
-                        } else {
-                            // UDP
-                            ctx.pipeline().addLast(HandlerNamer.name, AsoHandler())
+                        scope.launch {
+                            if (protocol == IpNumber.TCP) {
+                                TcpHandler(ctx).setupTcpChannel(connection)
+                            } else {
+                                // UDP
+                                UdpHandler(ctx).setupUdpConnection(connection)
+
+                            }
                         }
-                        ctx.fireChannelRead(connection)
 
                     }
                 }
