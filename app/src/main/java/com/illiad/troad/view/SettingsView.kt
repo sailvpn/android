@@ -203,7 +203,6 @@ fun SettingsView(
     }
 }
 
-
 @Composable
 fun CryptoSettingsItem(viewModel: SettingsViewModel) {
     val currentSelection by viewModel.selectedCrypto.collectAsState()
@@ -265,38 +264,45 @@ fun CryptoSettingsItem(viewModel: SettingsViewModel) {
 @Composable
 fun ConfigCaCertDialog(
     onDismiss: () -> Unit,
-    viewModel: SettingsViewModel // Pass ViewModel to handle saving
+    viewModel: SettingsViewModel
 ) {
     val context = LocalContext.current
-    var fileName by remember { mutableStateOf("No file selected") }
     val scope = rememberCoroutineScope()
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
             uri?.let { selectedUri ->
-                // 1. Read the file content as String
+                // 1. Read the file content
                 val content = context.contentResolver.openInputStream(selectedUri)?.use { input ->
                     input.bufferedReader().use { it.readText() }
                 }
 
-                // 2. Save to DataStore via ViewModel
+                // 2. Save, Notify, and then Close the Dialog
                 content?.let { certString ->
-                    fileName = selectedUri.lastPathSegment ?: "Certificate Loaded"
                     scope.launch {
                         viewModel.saveCaCert(certString)
+
+                        // Show the prompt (Toast)
+                        android.widget.Toast.makeText(
+                            context,
+                            "CA Cert was loaded",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+
+                        // Close the dialog to return to the menu
+                        onDismiss()
                     }
                 }
             }
         }
     )
 
-    // Define the specific MIME types for certificates
     val certMimeTypes = arrayOf(
-        "application/x-x509-ca-cert", // .crt, .der, .cer
-        "application/x-pem-file",     // .pem
-        "application/pkix-cert",      // Public Key Infrastructure
-        "application/x-pkcs12"        // .p12, .pfx (if you support bundles)
+        "application/x-x509-ca-cert",
+        "application/x-pem-file",
+        "application/pkix-cert",
+        "application/x-pkcs12"
     )
 
     AlertDialog(
@@ -304,67 +310,68 @@ fun ConfigCaCertDialog(
         title = { Text("Config CA Cert") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Selected: $fileName")
-                Button(onClick = { filePickerLauncher.launch(certMimeTypes) }) {
+                Text("Select your certificate file to update the server configuration.")
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { filePickerLauncher.launch(certMimeTypes) }
+                ) {
                     Text("Choose Certificate File")
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
     )
 }
 
 @Composable
 fun ConfigJwtDialog(
     onDismiss: () -> Unit,
-    viewModel: SettingsViewModel // Use the ViewModel!
+    viewModel: SettingsViewModel
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var fileName by remember { mutableStateOf("No file selected") }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let { selectedUri ->
-            // Reading file in a background-friendly way
-            val content = context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                input.bufferedReader().use { it.readText() }
-            }
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            uri?.let { selectedUri ->
+                val content = context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                    input.bufferedReader().use { it.readText() }
+                }
 
-            content?.let { jwtString ->
-                fileName = "Loaded JWT"
-                // Persist it immediately so it's not lost on rotation
-                scope.launch {
-                    viewModel.saveJwt(jwtString)
+                content?.let { jwtString ->
+                    scope.launch {
+                        viewModel.saveJwt(jwtString)
+                        android.widget.Toast.makeText(context, "JWT was loaded", android.widget.Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    }
                 }
             }
         }
-    }
-
-    // Define the specific MIME types for certificates
-    val certMimeTypes = arrayOf(
-        "application/x-x509-ca-cert", // .crt, .der, .cer
-        "application/x-pem-file",     // .pem
-        "application/pkix-cert",      // Public Key Infrastructure
-        "application/x-pkcs12"        // .p12, .pfx (if you support bundles)
     )
+
+    // Broaden MIME types to ensure the system finds compatible apps/files
+    val jwtMimeTypes = arrayOf("*/*") // Use "*/*" to allow all files if specific types fail
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Config JWT") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Current status: $fileName")
-                Button(onClick = { filePickerLauncher.launch(certMimeTypes) }) {
-                    // Using "OpenDocument" is generally more reliable on modern Android
+                // Ensure the button is easily clickable by filling the width
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { filePickerLauncher.launch(jwtMimeTypes) }
+                ) {
                     Text("Select JWT File")
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
     )
 }
 
