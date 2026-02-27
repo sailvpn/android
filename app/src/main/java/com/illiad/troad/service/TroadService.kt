@@ -33,7 +33,10 @@ import com.illiad.troad.service.security.CertManager
 import com.illiad.troad.service.security.Cryptos
 import com.illiad.troad.service.security.client.TokenManager
 import io.netty.channel.Channel
-import io.netty.channel.nio.NioEventLoopGroup
+import io.netty.channel.ChannelHandlerContext
+import io.netty.channel.ChannelInboundHandlerAdapter
+import io.netty.channel.MultiThreadIoEventLoopGroup
+import io.netty.channel.nio.NioIoHandler
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -60,7 +63,7 @@ class TroadService : VpnService() {
     @Volatile
     private var vpnChannel: Channel? = null
 
-    private var eventLoopGroup: NioEventLoopGroup? = null
+    private var eventLoopGroup: MultiThreadIoEventLoopGroup? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -140,12 +143,19 @@ class TroadService : VpnService() {
 
     private suspend fun startNettyStack() = withContext(Dispatchers.IO) {
         // Use a fixed thread count (2) to avoid Netty trying to read 'somaxconn' (SELinux fix)
-        eventLoopGroup = NioEventLoopGroup(2)
+        eventLoopGroup = MultiThreadIoEventLoopGroup(2, NioIoHandler.newFactory())
 
         // 1. Create the channel instance manually
         val channel = FildesChannel(null, vpnInterface!!.fileDescriptor)
         channel.pipeline().addLast(PacketDecoder())
         channel.pipeline().addLast(DemuxHandler)
+        // Final catch for errors in the pipeline
+        channel.pipeline().addLast(object : ChannelInboundHandlerAdapter() {
+            override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
+                Log.e(TS, "Netty Pipeline Error: ${cause.message}")
+                // Do NOT rethrow. This keeps the app alive.
+            }
+        })
 
         // 2. Register it to your EventLoopGroup
         val registerFuture = eventLoopGroup!!.next()
@@ -247,7 +257,7 @@ class TroadService : VpnService() {
         settingsObserver?.cancel()
         settingsObserver = serviceScope.launch {
             // Combine all flows into a single configuration stream
-            combine(
+            combine<Any, Settings>(
                 tStore.serverDomainFlow,
                 tStore.serverPortFlow,
                 tStore.caCertFlow,
@@ -256,20 +266,19 @@ class TroadService : VpnService() {
                 tStore.jwtFlow,
                 tStore.usernameFlow,
                 tStore.passwordFlow,
-                tStore.durationFlow,
-                tStore.autoRenewFlow
+                tStore.durationFlow
             ) { v ->
                 // This data class acts as a snapshot of your current settings
                 Settings(
-                    v[0] as String,
-                    v[1] as Int,
-                    v[2] as String,
-                    v[3] as Cryptos,
-                    v[4] as String,
-                    v[5] as String,
-                    v[6] as String,
-                    v[7] as String,
-                    v[8] as Duration,
+                    domain = v[0] as String,
+                    port = v[1] as Int,
+                    cacert = v[2] as String,
+                    crypto = v[3] as Cryptos,
+                    secret = v[4] as String,
+                    jwt = v[5] as String,
+                    username = v[6] as String,
+                    password = v[7] as String,
+                    duration = v[8] as Duration
                 )
             }.collectLatest { settings ->
                 // This block runs whenever ANY of the 6 settings change
