@@ -59,6 +59,7 @@ class AsoAckHandler(private val connection: Connection) :
                             val ch = future.channel()
                             // associate udp relay channel with connection
                             session.channel = ch
+                            Demux.mapChannel(ch, connection)
                             val pipeline = ch.pipeline()
                             // setup DTLS handlers for backend
                             val dtlsHandler = DtlsHandler(

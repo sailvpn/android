@@ -37,6 +37,7 @@ class AckHandler(private val frontendCtx: ChannelHandlerContext, private val con
             val session = Demux.getSession(connection)
             if (session != null) {
                 session.channel = backend
+                Demux.mapChannel(backend, connection)
                 // forward the first packet to the backend
                 if(!session.isBufferEmpty()){
                     backend.writeAndFlush(session.getPacket()!!)
