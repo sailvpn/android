@@ -1,5 +1,6 @@
 package com.illiad.troad.service
 
+import android.annotation.SuppressLint
 import android.app.*
 import android.content.Intent
 import android.net.VpnService
@@ -46,6 +47,7 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
 
+@SuppressLint("VpnServicePolicy")
 class TroadService : VpnService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
