@@ -4,33 +4,53 @@ import io.netty.channel.DefaultChannelConfig
 import io.netty.buffer.ByteBufAllocator
 import io.netty.channel.AdaptiveRecvByteBufAllocator
 import io.netty.channel.ChannelOption
+import io.netty.channel.*
 
 class FildesChannelConfig(channel: FildesChannel) : DefaultChannelConfig(channel) {
 
     init {
-        // Sensible defaults for a file-like channel
-        setAllocator(ByteBufAllocator.DEFAULT) // Or a specific one if needed
+        // Use a Pooled allocator if this is high-throughput file I/O
+        setAllocator(ByteBufAllocator.DEFAULT)
         setRecvByteBufAllocator(AdaptiveRecvByteBufAllocator.DEFAULT)
-        setAutoRead(true) // auto-read by default
-        // Other options can be set here or exposed via setters
-    }
 
-    // You can add FildesChannel-specific options here if needed
-    // For example:
-    // var fileReadMode: ReadMode = ReadMode.SEQUENTIAL
-    // enum class ReadMode { SEQUENTIAL, RANDOM_ACCESS }
+        // Essential for flow control in proxy/tunnel scenarios
+        setAutoRead(true)
+
+        // Set default watermarks (e.g., 32KB low, 64KB high)
+        setWriteBufferWaterMark(WriteBufferWaterMark(32 * 1024, 64 * 1024))
+    }
 
     override fun getOptions(): Map<ChannelOption<*>, Any> {
-        return super.getOptions().toMutableMap() // Add your custom options if any
+        return getOptions(
+            super.getOptions(),
+            ChannelOption.AUTO_READ,
+            ChannelOption.WRITE_BUFFER_WATER_MARK
+        )
     }
 
-    override fun <T : Any?> getOption(option: ChannelOption<T>?): T? {
-        // Handle your custom options
-        return super.getOption(option)
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : Any?> getOption(option: ChannelOption<T>): T? {
+        return when (option) {
+            // Add custom options here if you add specific file modes
+            else -> super.getOption(option)
+        }
     }
 
-    override fun <T : Any?> setOption(option: ChannelOption<T>?, value: T): Boolean {
-        // Handle your custom options
-        return super.setOption(option, value)
+    override fun <T : Any?> setOption(option: ChannelOption<T>, value: T): Boolean {
+        validate(option, value)
+
+        return when (option) {
+            // Example of intercepting a standard option to trigger internal logic
+            ChannelOption.AUTO_READ -> {
+                val result = super.setOption(option, value)
+                if (value as Boolean) {
+                    channel.read() // Trigger a read if auto-read is toggled on
+                }
+                result
+            }
+
+            else -> super.setOption(option, value)
+        }
     }
 }
+

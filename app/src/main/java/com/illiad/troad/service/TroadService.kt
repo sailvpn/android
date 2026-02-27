@@ -1,6 +1,5 @@
 package com.illiad.troad.service
 
-import FildesAddress
 import android.app.*
 import android.content.Intent
 import android.net.VpnService
@@ -21,7 +20,6 @@ import com.illiad.troad.Consts.NOTIFICATION_ID
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_DISCONNECT
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_OPEN_APP
 import com.illiad.troad.Consts.TS
-import com.illiad.troad.Consts.TUN_IP
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
 import com.illiad.troad.Settings
@@ -34,15 +32,16 @@ import com.illiad.troad.service.handler.ip.DemuxHandler
 import com.illiad.troad.service.security.CertManager
 import com.illiad.troad.service.security.Cryptos
 import com.illiad.troad.service.security.client.TokenManager
-import io.netty.bootstrap.Bootstrap
 import io.netty.channel.Channel
-import io.netty.channel.ChannelInitializer
 import io.netty.channel.nio.NioEventLoopGroup
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import java.io.IOException
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.util.Collections
 
 class TroadService : VpnService() {
 
@@ -50,10 +49,10 @@ class TroadService : VpnService() {
 
     private val tStore by lazy { TroadStore(applicationContext) }
     private var settingsObserver: Job? = null
-    private var certManagerObserver: Job ? = null
+    private var certManagerObserver: Job? = null
     private var tokenManager: TokenManager? = null
     private var autoRenewObserver: Job? = null
-    private var cryptoTypeObserver: Job? =null
+    private var cryptoTypeObserver: Job? = null
 
     @Volatile
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -114,10 +113,17 @@ class TroadService : VpnService() {
 
     private fun establishVpnInterface(): Boolean {
         return try {
-            Log.d(TS, "Preparing VPN interface at: $TUN_IP")
+            val currentPrefixes = getActiveNetworkPrefixes()
+            // Logic: If any active network uses 10.x.x.x, move the VPN to 172.19.x.x
+            val tunIp = if (currentPrefixes.any { it.startsWith("10.") }) {
+                "172.19.0.1"
+            } else {
+                "10.8.0.2"
+            }
+            Log.d(TS, "Preparing VPN interface at: $tunIp")
             vpnInterface = Builder()
                 .setSession(getString(R.string.app_name))
-                .addAddress(TUN_IP, 24)
+                .addAddress(tunIp, 24)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer(DNS1)
                 .addDnsServer(DNS2)
@@ -136,26 +142,29 @@ class TroadService : VpnService() {
         // Use a fixed thread count (2) to avoid Netty trying to read 'somaxconn' (SELinux fix)
         eventLoopGroup = NioEventLoopGroup(2)
 
-        val bootstrap = Bootstrap()
-            .group(eventLoopGroup)
-            // Replace NioSocketChannel with your custom FildesChannel if it wraps FileDescriptor
-            .channelFactory { FildesChannel(null, vpnInterface!!.fileDescriptor) }
-            .handler(object : ChannelInitializer<FildesChannel>() {
-                override fun initChannel(ch: FildesChannel) {
-                    ch.pipeline().addLast(PacketDecoder())
-                    ch.pipeline().addLast(DemuxHandler)
-                }
-            })
+        // 1. Create the channel instance manually
+        val channel = FildesChannel(null, vpnInterface!!.fileDescriptor)
+        channel.pipeline().addLast(PacketDecoder())
+        channel.pipeline().addLast(DemuxHandler)
 
-        // Netty's connect/bind can be slow on emulators; await() keeps it in this coroutine
-        val fildesAddress = FildesAddress(vpnInterface!!.fileDescriptor)
-        val future = bootstrap.connect(fildesAddress, fildesAddress).await()
-        if (future.isSuccess) {
-            vpnChannel = future.channel()
-            Log.d(TS, "Netty pipeline established.")
-        } else {
-            throw IOException("Netty failed to bind to TUN", future.cause())
+        // 2. Register it to your EventLoopGroup
+        val registerFuture = eventLoopGroup!!.next()
+            .register(channel)
+
+        registerFuture.addListener { future ->
+            if (future.isSuccess) {
+                // This ensures the pipeline knows the "cable is plugged in"
+                channel.pipeline().fireChannelActive()
+
+                // This triggers the first call to doBeginRead()
+                channel.pipeline().read()
+
+                Log.d(TS, "FildesChannel registered and active")
+            } else {
+                Log.e(TS, "Failed to register FildesChannel", future.cause())
+            }
         }
+
     }
 
     private fun stopVpn() {
@@ -302,5 +311,32 @@ class TroadService : VpnService() {
                 }
 
         }
+    }
+
+    fun getActiveNetworkPrefixes(): List<String> {
+        val prefixes = mutableListOf<String>()
+        try {
+            // Get all interfaces on the device (wlan0, rmnet0, etc.)
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return emptyList()
+
+            for (networkInterface in Collections.list(interfaces)) {
+                // Only check interfaces that are currently active and NOT the loopback (localhost)
+                if (!networkInterface.isUp || networkInterface.isLoopback) continue
+
+                val addresses = networkInterface.inetAddresses
+                for (address in Collections.list(addresses)) {
+                    // We only care about IPv4 for standard TUN range detection
+                    if (!address.isLoopbackAddress && address is Inet4Address) {
+                        val ip = address.hostAddress
+                        // Extract prefix (e.g., "192.168.1.15" -> "192.168.1")
+                        val prefix = ip!!.substringBeforeLast(".")
+                        prefixes.add(prefix)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return prefixes.distinct() // Remove duplicates if an interface has multiple IPs
     }
 }
