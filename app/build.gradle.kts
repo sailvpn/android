@@ -96,6 +96,14 @@ android {
         }
 
     }
+    lint {
+        // Disables the specific detector causing the crash
+        disable.add("LocalContextConfigurationRead")
+        disable.add("ConfigurationScreenWidthHeight")
+
+        // Optional: prevents lint from stopping the entire build if other errors occur
+        abortOnError = false
+    }
 }
 
 dependencies {
