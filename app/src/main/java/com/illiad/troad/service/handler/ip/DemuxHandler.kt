@@ -38,7 +38,7 @@ import java.nio.ByteBuffer
  */
 
 @ChannelHandler.Sharable
-object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
+object DemuxHandler : SimpleChannelInboundHandler<IpPacket>() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun channelInactive(ctx: ChannelHandlerContext?) {
@@ -47,98 +47,94 @@ object DemuxHandler : SimpleChannelInboundHandler<MutableList<IpPacket?>?>() {
 
     }
 
-    override fun channelRead0(ctx: ChannelHandlerContext?, packets: MutableList<IpPacket?>?) {
-        if (ctx == null || packets == null || packets.isEmpty()) {
+    override fun channelRead0(ctx: ChannelHandlerContext?, packet: IpPacket) {
+        if (ctx == null) {
             return
         }
+        scope.launch {
+            handlePacket(ctx, packet)
+        }
+    }
 
-        for (packet in packets) {
-            if (packet != null) {
-                val connection = Connection.extractConnection(packet) ?: continue
-                val protocol = connection.protocol
-                // Filter out any packets that are not TCP or UDP.
-                if (protocol != IpNumber.TCP && protocol != IpNumber.UDP) {
-                    // You can add logging here if you want to see what's being dropped.
-                    // Log.d(TAG, "Dropping non-TCP/UDP packet. Protocol: $protocol")
-                    continue // Skip to the next packet
-                }
+    private suspend fun handlePacket(ctx: ChannelHandlerContext, packet: IpPacket) {
+        val connection = Connection.extractConnection(packet) ?: return
+        val protocol = connection.protocol
+        // Filter out any packets that are not TCP or UDP.
+        if (protocol != IpNumber.TCP && protocol != IpNumber.UDP) {
+            // You can add logging here if you want to see what's being dropped.
+            // Log.d(TAG, "Dropping non-TCP/UDP packet. Protocol: $protocol")
+            return // Skip to the next packet
+        }
 
-                var session = Demux.getSession(connection)
-                if (session == null) {
-                    // new session
-                    session = Demux.createSession(connection)
-                }
+        var session = Demux.getSession(connection)
+        if (session == null) {
+            // new session
+            session = Demux.createSession(connection)
+        }
 
-                if (session.isActive()) {
-                    //channel established
-                    if (session.isBufferEmpty()) {
-                        // empty buffer, send current packet
-                        if (protocol == IpNumber.TCP) {
-                            // TCP packet
-                            session.writeAndFlush(packet.payload.payload.rawData)
-                        } else {
-                            // UDP packet
-                            session.writeAndFlush(
-                                DatagramPacket(
-                                    Unpooled.wrappedBuffer(
-                                        s5UdpHeader(connection),
-                                        packet.payload.payload.rawData
-                                    ),
-                                    session.channel?.remoteAddress() as InetSocketAddress,
-                                    session.channel?.localAddress() as InetSocketAddress
-                                )
-                            )
-                        }
-                    } else {
-                        // buffer not empty, append packet to buffer
-                        // TCP packet
-                        if (protocol == IpNumber.TCP) {
-                            // TCP packet
-                            session.addPacket(packet.payload.payload.rawData)
-                        } else {
-                            // UDP packet
-                            session.addPacket(
-                                Unpooled.wrappedBuffer(
-                                    s5UdpHeader(connection),
-                                    packet.payload.payload.rawData
-                                )
-                            )
-                        }
-                    }
-
-                } else {
-                    // channel not yet active, buffer the packet
+        if (session.isActive()) {
+            //channel established
+            if (session.isBufferEmpty()) {
+                // empty buffer, send current packet
+                if (protocol == IpNumber.TCP) {
                     // TCP packet
-                    if (protocol == IpNumber.TCP) {
-                        // TCP packet
-                        session.addPacket(packet.payload.payload.rawData)
-                    } else {
-                        // UDP packet
-                        session.addPacket(
+                    session.writeAndFlush(packet.payload.payload.rawData)
+                } else {
+                    // UDP packet
+                    session.writeAndFlush(
+                        DatagramPacket(
                             Unpooled.wrappedBuffer(
                                 s5UdpHeader(connection),
                                 packet.payload.payload.rawData
-                            )
+                            ),
+                            session.channel?.remoteAddress() as InetSocketAddress,
+                            session.channel?.localAddress() as InetSocketAddress
                         )
-                    }
-
-                    if (session.channel == null) {
-                        // null channel, establish channel
-                        scope.launch {
-                            if (protocol == IpNumber.TCP) {
-                                TcpHandler(ctx).setupTcpChannel(connection)
-                            } else {
-                                // UDP
-                                UdpHandler(ctx).setupUdpConnection(connection)
-
-                            }
-                        }
-
-                    }
+                    )
                 }
+            } else {
+                // buffer not empty, append packet to buffer
+                // TCP packet
+                if (protocol == IpNumber.TCP) {
+                    // TCP packet
+                    session.addPacket(packet.payload.payload.rawData)
+                } else {
+                    // UDP packet
+                    session.addPacket(
+                        Unpooled.wrappedBuffer(
+                            s5UdpHeader(connection),
+                            packet.payload.payload.rawData
+                        )
+                    )
+                }
+            }
 
-                // TODO: handle non-IP packets
+        } else {
+            // channel not yet active, buffer the packet
+            // TCP packet
+            if (protocol == IpNumber.TCP) {
+                // TCP packet
+                session.addPacket(packet.payload.payload.rawData)
+            } else {
+                // UDP packet
+                session.addPacket(
+                    Unpooled.wrappedBuffer(
+                        s5UdpHeader(connection),
+                        packet.payload.payload.rawData
+                    )
+                )
+            }
 
+            if (session.channel == null) {
+                // null channel, establish channel
+
+                if (protocol == IpNumber.TCP) {
+                    TcpHandler(ctx).setupTcpChannel(connection)
+                } else {
+                    // UDP
+                    UdpHandler(ctx).setupUdpConnection(connection)
+
+                }
             }
         }
     }
