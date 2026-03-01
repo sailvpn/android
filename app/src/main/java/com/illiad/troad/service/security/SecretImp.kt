@@ -37,10 +37,10 @@ object SecretImp : Secret {
     override val cryptoType: Cryptos
         get() = Utils.settings!!.crypto
 
-    override val cryptoTypeByte: Byte
+    override val cryptoTypeByte: Int
         get() = Utils.settings!!.crypto.code
 
-    override val cryptoLength: Short
+    override val cryptoLength: Int
         get() = Utils.settings!!.crypto.length
 
     override fun offset(): ByteArray {

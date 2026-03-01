@@ -13,6 +13,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.pcap4j.packet.IpPacket
+import org.pcap4j.packet.TcpPacket
+import org.pcap4j.packet.UdpPacket
 import org.pcap4j.packet.namednumber.IpNumber
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
@@ -78,14 +80,18 @@ object DemuxHandler : SimpleChannelInboundHandler<IpPacket>() {
                 // empty buffer, send current packet
                 if (protocol == IpNumber.TCP) {
                     // TCP packet
-                    session.writeAndFlush(packet.payload.payload.rawData)
+                    val tcpPacket = packet.get(TcpPacket::class.java) ?: return // silent skip
+                    val tcpRaw = tcpPacket.payload?.rawData ?: return // Silent skip
+                    session.writeAndFlush(tcpRaw)
                 } else {
                     // UDP packet
+                    val udpPacket = packet.get(UdpPacket::class.java) ?: return // silent skip
+                    val udpRaw = udpPacket.payload?.rawData ?: return // silent skip
                     session.writeAndFlush(
                         DatagramPacket(
                             Unpooled.wrappedBuffer(
                                 s5UdpHeader(connection),
-                                packet.payload.payload.rawData
+                                udpRaw
                             ),
                             session.channel?.remoteAddress() as InetSocketAddress,
                             session.channel?.localAddress() as InetSocketAddress
@@ -94,16 +100,19 @@ object DemuxHandler : SimpleChannelInboundHandler<IpPacket>() {
                 }
             } else {
                 // buffer not empty, append packet to buffer
-                // TCP packet
                 if (protocol == IpNumber.TCP) {
                     // TCP packet
-                    session.addPacket(packet.payload.payload.rawData)
+                    val tcpPacket = packet.get(TcpPacket::class.java) ?: return // silent skip
+                    val tcpRaw = tcpPacket.payload?.rawData ?: return // Silent skip
+                    session.addPacket(tcpRaw)
                 } else {
                     // UDP packet
+                    val udpPacket = packet.get(UdpPacket::class.java) ?: return // silent skip
+                    val udpRaw = udpPacket.payload?.rawData ?: return // silent skip
                     session.addPacket(
                         Unpooled.wrappedBuffer(
                             s5UdpHeader(connection),
-                            packet.payload.payload.rawData
+                            udpRaw
                         )
                     )
                 }
@@ -114,13 +123,17 @@ object DemuxHandler : SimpleChannelInboundHandler<IpPacket>() {
             // TCP packet
             if (protocol == IpNumber.TCP) {
                 // TCP packet
-                session.addPacket(packet.payload.payload.rawData)
+                val tcpPacket = packet.get(TcpPacket::class.java) ?: return // silent skip
+                val tcpRaw = tcpPacket.payload?.rawData ?: return // Silent skip
+                session.addPacket(Unpooled.wrappedBuffer(tcpRaw))
             } else {
                 // UDP packet
+                val udpPacket = packet.get(UdpPacket::class.java) ?: return // silent skip
+                val udpRaw = udpPacket.payload?.rawData ?: return // silent skip
                 session.addPacket(
                     Unpooled.wrappedBuffer(
                         s5UdpHeader(connection),
-                        packet.payload.payload.rawData
+                        udpRaw
                     )
                 )
             }
@@ -136,6 +149,35 @@ object DemuxHandler : SimpleChannelInboundHandler<IpPacket>() {
 
                 }
             }
+        }
+    }
+
+    private fun getTcpRaw(packet: IpPacket): ByteArray? {
+        val tcpPacket = packet.get(TcpPacket::class.java) ?: null
+        return tcpPacket?.payload?.rawData ?: null
+    }
+
+    private fun bufferTcpRaw(session: Session, packet: IpPacket) {
+        val tcpRaw = getTcpRaw(packet)
+        if (tcpRaw != null) {
+            session.addPacket(Unpooled.wrappedBuffer(tcpRaw))
+        }
+    }
+
+    private fun getUdpRaw(packet: IpPacket): ByteArray? {
+        val udpPacket = packet.get(UdpPacket::class.java) ?: null
+        return udpPacket?.payload?.rawData ?: null
+    }
+
+    private fun bufferUdpRaw(session: Session, packet: IpPacket) {
+        val udpRaw = getUdpRaw(packet)
+        if (udpRaw != null) {
+            session.addPacket(
+                Unpooled.wrappedBuffer(
+                    s5UdpHeader(Connection.extractConnection(packet)!!),
+                    udpRaw
+                )
+            )
         }
     }
 

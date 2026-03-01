@@ -6,9 +6,9 @@ interface Secret {
 
     val cryptoType: Cryptos?
 
-    val cryptoTypeByte: Byte
+    val cryptoTypeByte: Int
 
-    val cryptoLength: Short
+    val cryptoLength: Int
 
     fun offset(): ByteArray?
 }
