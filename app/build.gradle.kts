@@ -9,7 +9,8 @@ plugins {
 android {
     namespace = "com.illiad.troad"
     compileSdk = 35
-
+    // Use the exact version number found in the SDK Manager
+    ndkVersion = "28.2.13676358"
     defaultConfig {
         applicationId = "com.illiad.troad"
         minSdk = 31
