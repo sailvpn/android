@@ -3,7 +3,6 @@ package com.illiad.troad.model
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -69,7 +68,7 @@ class TroadStore(appContext: Context) {
 
     val selectedCryptoFlow: Flow<Cryptos> = context.dataStore.data
         .map { settings ->
-            Cryptos.fromValue(settings[StoreKeys.SELECTED_CRYPTO]).orElse(Cryptos.JWT2)
+            Cryptos.fromValue(settings[StoreKeys.SELECTED_CRYPTO]) ?: Cryptos.JWT2
         }
 
     suspend fun saveCryptoSelection(crypto: Cryptos) {

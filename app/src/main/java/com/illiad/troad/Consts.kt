@@ -4,7 +4,6 @@ object Consts {
     const val TS = "TroadService"
     const val TM = "TokenManager"
     const val CM = "CertManager"
-    const val DH = "DtlsHandler"
     const val VM = "SettingsViewModel"
 
     const val DNS1 = "8.8.8.8"
@@ -27,12 +26,5 @@ object Consts {
 
     const val MIN: Int = 1
     const val MAX: Int = 64 // important, maximum value 128
-
-    // set buffer size to 1310720 (65536*20) to ensure that buffer limit can never be equal to buffer capacity in read mode
-    // this is how we decide if a buffer is in read mode (limit < capacity), or in write mode (limit == capacity)
-    const val NET_OUT_SIZE: Int = 1310720
-    const val NET_IN_SIZE: Int = 1310720
-    const val APP_IN_SIZE: Int = 1310720
-    const val FRAGMENT_SIZE: Int = 1300
 
 }

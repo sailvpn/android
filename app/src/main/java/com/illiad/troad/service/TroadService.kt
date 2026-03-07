@@ -7,9 +7,9 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
-import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.DNS1
 import com.illiad.troad.Consts.DNS2
 import com.illiad.troad.Consts.EXTRA_IS_CONNECTED
@@ -19,70 +19,42 @@ import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_ID
 import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_NAME
 import com.illiad.troad.Consts.NOTIFICATION_ID
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_DISCONNECT
-import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_OPEN_APP
 import com.illiad.troad.Consts.TS
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
-import com.illiad.troad.Settings
 import com.illiad.troad.Utils
 import com.illiad.troad.model.Duration
 import com.illiad.troad.model.TroadStore
-import com.illiad.troad.service.channel.FildesChannel
-import com.illiad.troad.service.codec.ip.PacketDecoder
-import com.illiad.troad.service.handler.ip.DemuxHandler
-import com.illiad.troad.service.security.CertManager
 import com.illiad.troad.service.security.Cryptos
+import com.illiad.troad.service.security.HeaderEncoder
 import com.illiad.troad.service.security.client.TokenManager
-import io.netty.channel.Channel
-import io.netty.channel.ChannelHandlerContext
-import io.netty.channel.ChannelInboundHandlerAdapter
-import io.netty.channel.MultiThreadIoEventLoopGroup
-import io.netty.channel.nio.NioIoHandler
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.*
 import java.io.IOException
-import java.net.Inet4Address
-import java.net.NetworkInterface
-import java.util.Collections
 
 @SuppressLint("VpnServicePolicy")
 class TroadService : VpnService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
     private val tStore by lazy { TroadStore(applicationContext) }
-    private var settingsObserver: Job? = null
-    private var certManagerObserver: Job? = null
-    private var tokenManager: TokenManager? = null
-    private var autoRenewObserver: Job? = null
-    private var cryptoTypeObserver: Job? = null
+    private lateinit var tokenManager: TokenManager
 
     @Volatile
     private var vpnInterface: ParcelFileDescriptor? = null
-
-    @Volatile
-    private var vpnChannel: Channel? = null
-
-    private var eventLoopGroup: MultiThreadIoEventLoopGroup? = null
+    private var vpnJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
-        observeSettings()
-        observeCertManager()
         tokenManager = TokenManager.getInstance(applicationContext)
-        observeAutorenew()
-        observeCryptoType()
-        Log.d(TS, "VPN Service Created.")
         createNotificationChannel()
+        observeSettings()
+        observeAutorenew()
+        maintainHeadr()
+        Log.d(TS, "VPN Service Created.")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action
-        Log.d(TS, "onStartCommand received: $action")
-
-        when (action) {
+        when (intent?.action) {
             ACTION_CONNECT -> handleConnect()
             ACTION_DISCONNECT -> stopVpn()
         }
@@ -90,27 +62,21 @@ class TroadService : VpnService() {
     }
 
     private fun handleConnect() {
-        if (vpnInterface != null) {
-            Log.d(TS, "VPN already running.")
-            return
-        }
+        if (vpnInterface != null) return
 
-        // 1. IMMEDIATELY start foreground to prevent ANR/System Kill
         startForeground(NOTIFICATION_ID, createNotification("Connecting..."))
 
-        // 2. Offload heavy Netty/Vpn setup to IO thread
-        serviceScope.launch {
+        vpnJob = serviceScope.launch {
             try {
                 if (establishVpnInterface()) {
-                    startNettyStack()
-                    updateNotification("VPN Connected and Active")
+                    runVpnStack(vpnInterface!!.fd) // Logic for tun2socks / native engine goes here
+                    updateNotification("VPN Active")
                     broadcastStatus("Connected", true)
                 } else {
-                    Log.e(TS, "Failed to establish VPN interface.")
                     stopVpn()
                 }
             } catch (e: Exception) {
-                Log.e(TS, "Critical error during VPN startup", e)
+                Log.e(TS, "Fatal VPN error", e)
                 stopVpn()
             }
         }
@@ -118,14 +84,9 @@ class TroadService : VpnService() {
 
     private fun establishVpnInterface(): Boolean {
         return try {
-            val currentPrefixes = getActiveNetworkPrefixes()
-            // Logic: If any active network uses 10.x.x.x, move the VPN to 172.19.x.x
-            val tunIp = if (currentPrefixes.any { it.startsWith("10.") }) {
-                "172.19.0.1"
-            } else {
-                "10.8.0.2"
-            }
-            Log.d(TS, "Preparing VPN interface at: $tunIp")
+            // Native Kotlin logic to determine IP without NetworkInterface.getNetworkInterfaces()
+            val tunIp = "10.8.0.2"
+
             vpnInterface = Builder()
                 .setSession(getString(R.string.app_name))
                 .addAddress(tunIp, 24)
@@ -138,61 +99,65 @@ class TroadService : VpnService() {
 
             vpnInterface != null
         } catch (e: Exception) {
-            Log.e(TS, "VpnService.Builder failed", e)
+            Log.e(TS, "Vpn Builder failed", e)
             false
         }
     }
 
-    private suspend fun startNettyStack() = withContext(Dispatchers.IO) {
-        // Use a fixed thread count (2) to avoid Netty trying to read 'somaxconn' (SELinux fix)
-        eventLoopGroup = MultiThreadIoEventLoopGroup(2, NioIoHandler.newFactory())
 
-        // 1. Create the channel instance manually
-        val channel = FildesChannel(null, vpnInterface!!.fileDescriptor)
-        channel.pipeline().addLast(PacketDecoder())
-        channel.pipeline().addLast(DemuxHandler)
-        // Final catch for errors in the pipeline
-        channel.pipeline().addLast(object : ChannelInboundHandlerAdapter() {
-            override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
-                Log.e(TS, "Netty Pipeline Error: ${cause.message}")
-                // Do NOT rethrow. This keeps the app alive.
-            }
-        })
+    /**
+     * Executes the native tun2socks engine.
+     * This function suspends until the VPN is stopped or the coroutine is cancelled.
+     */
+    private suspend fun runVpnStack(fd: Int) = withContext(Dispatchers.IO) {
+        val settings = Utils.settings ?: return@withContext
 
-        // 2. Register it to your EventLoopGroup
-        val registerFuture = eventLoopGroup!!.next()
-            .register(channel)
+        Log.i(TS, "Starting tun2socks engine on FD: $fd")
 
-        registerFuture.addListener { future ->
-            if (future.isSuccess) {
-                // This ensures the pipeline knows the "cable is plugged in"
-                channel.pipeline().fireChannelActive()
+        // 1. Start the native engine.
+        // If your Go implementation is blocking, this call won't return until stopped.
+        val result = NativeEngine.startTun2Socks(
+            fd = fd,
+            proxyAddr = settings.domain ?: "127.0.0.1",
+            proxyPort = settings.port ?: 5001,
+            mtu = MTU,
+            caCert = settings.cacert,
+            header = Utils.header!!,
+            sni = ""
+        )
 
-                // This triggers the first call to doBeginRead()
-                channel.pipeline().read()
-
-                Log.d(TS, "FildesChannel registered and active")
-            } else {
-                Log.e(TS, "Failed to register FildesChannel", future.cause())
-            }
+        if (result != 0) {
+            Log.e(TS, "Native engine failed to start with code: $result")
+            throw RuntimeException("tun2socks startup failure")
         }
 
+        // 2. Keep the coroutine alive and monitor for cancellation
+        try {
+            while (isActive) {
+                // Check if the interface is still valid
+                if (vpnInterface == null) break
+                delay(1000)
+            }
+        } finally {
+            // 3. Ensure the engine stops if the coroutine is cancelled (e.g., stopVpn() called)
+            withContext(NonCancellable) {
+                Log.i(TS, "Shutting down native tun2socks engine")
+                NativeEngine.stopTun2Socks()
+            }
+        }
     }
 
+
     private fun stopVpn() {
-        Log.d(TS, "Stopping VPN Service...")
         broadcastStatus("Disconnected", false)
+        vpnJob?.cancel()
 
-        serviceScope.launch {
-            vpnChannel?.close()?.await()
-            eventLoopGroup?.shutdownGracefully()
-
-            withContext(Dispatchers.Main) {
-                try {
-                    vpnInterface?.close()
-                } catch (e: IOException) {
-                    Log.e(TS, "Error closing VPN interface", e)
-                }
+        serviceScope.launch(Dispatchers.Main) {
+            try {
+                vpnInterface?.close()
+            } catch (e: IOException) {
+                Log.e(TS, "Close error", e)
+            } finally {
                 vpnInterface = null
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -200,71 +165,16 @@ class TroadService : VpnService() {
         }
     }
 
-    private fun broadcastStatus(message: String, isConnected: Boolean) {
-        val intent = Intent(ACTION_VPN_STATUS_BROADCAST).apply {
-            putExtra(EXTRA_STATUS_MESSAGE, message)
-            putExtra(EXTRA_IS_CONNECTED, isConnected)
-            setPackage(packageName)
-        }
-        sendBroadcast(intent)
-    }
-
-    private fun updateNotification(text: String) {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager?.notify(NOTIFICATION_ID, createNotification(text))
-    }
-
-    private fun createNotification(contentText: String): Notification {
-        val openAppIntent = PendingIntent.getActivity(
-            this, PENDING_INTENT_REQUEST_CODE_OPEN_APP,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val disconnectIntent = PendingIntent.getService(
-            this, PENDING_INTENT_REQUEST_CODE_DISCONNECT,
-            Intent(this, TroadService::class.java).apply { action = ACTION_DISCONNECT },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.troy)
-            .setContentTitle("${getString(R.string.app_name)} VPN")
-            .setContentText(contentText)
-            .setOngoing(true)
-            .setContentIntent(openAppIntent)
-            .addAction(R.drawable.cross, "Disconnect", disconnectIntent)
-            .build()
-    }
-
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            NOTIFICATION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_LOW // Low priority avoids annoying sounds on every update
-        )
-        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
-    }
-
-    override fun onDestroy() {
-        serviceScope.cancel()
-        settingsObserver?.cancel()
-        certManagerObserver?.cancel()
-        autoRenewObserver?.cancel()
-        cryptoTypeObserver?.cancel()
-        super.onDestroy()
-    }
-
     private fun observeSettings() {
-        settingsObserver?.cancel()
-        settingsObserver = serviceScope.launch {
+
+        serviceScope.launch {
             // Combine all flows into a single configuration stream
             combine<Any, Settings>(
                 tStore.serverDomainFlow,
                 tStore.serverPortFlow,
                 tStore.caCertFlow,
                 tStore.selectedCryptoFlow,
-                tStore.sharedSecretFlow,
+                tStore.tunIpFlow,
                 tStore.jwtFlow,
                 tStore.usernameFlow,
                 tStore.passwordFlow,
@@ -276,78 +186,95 @@ class TroadService : VpnService() {
                     port = v[1] as Int,
                     cacert = v[2] as String,
                     crypto = v[3] as Cryptos,
-                    secret = v[4] as String,
                     jwt = v[5] as String,
                     username = v[6] as String,
                     password = v[7] as String,
                     duration = v[8] as Duration
                 )
-            }.collectLatest { settings ->
+            }.collectLatest { s ->
                 // This block runs whenever ANY of the 6 settings change
-                Utils.settings = settings
+                Utils.settings = s
             }
-        }
-    }
-
-    private fun observeCertManager() {
-        certManagerObserver?.cancel()
-        certManagerObserver = serviceScope.launch {
-            tStore.caCertFlow
-                .filter { cert -> cert.isNotEmpty() }
-                .collectLatest { cert ->
-                    CertManager.updateContext(cert)
-                }
         }
     }
 
     private fun observeAutorenew() {
-        autoRenewObserver?.cancel()
-        autoRenewObserver = serviceScope.launch {
-            tStore.autoRenewFlow
-                .collectLatest { autoRenew ->
-                    tokenManager?.manageRenew(autoRenew.minutes)
-                }
-        }
-    }
-
-    private fun observeCryptoType() {
-        cryptoTypeObserver?.cancel()
-        cryptoTypeObserver = serviceScope.launch {
-            tStore.selectedCryptoFlow
-                .filter { crypt ->
-                    Cryptos.JWT != crypt
-                }
-                .collectLatest { crypt ->
-                    tokenManager?.manageRenew(0L)
-                }
-
-        }
-    }
-
-    fun getActiveNetworkPrefixes(): List<String> {
-        val prefixes = mutableListOf<String>()
-        try {
-            // Get all interfaces on the device (wlan0, rmnet0, etc.)
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return emptyList()
-
-            for (networkInterface in Collections.list(interfaces)) {
-                // Only check interfaces that are currently active and NOT the loopback (localhost)
-                if (!networkInterface.isUp || networkInterface.isLoopback) continue
-
-                val addresses = networkInterface.inetAddresses
-                for (address in Collections.list(addresses)) {
-                    // We only care about IPv4 for standard TUN range detection
-                    if (!address.isLoopbackAddress && address is Inet4Address) {
-                        val ip = address.hostAddress
-                        // Extract prefix (e.g., "192.168.1.15" -> "192.168.1")
-                        val prefix = ip!!.substringBeforeLast(".")
-                        prefixes.add(prefix)
-                    }
-                }
+        serviceScope.launch {
+            tStore.autoRenewFlow.collectLatest { renew ->
+                tokenManager.manageRenew(renew.minutes)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+
         }
-        return prefixes.distinct() // Remove duplicates if an interface has multiple IPs
+    }
+
+    // crate a new headr whenever crypt, sharesecret, or jwt changes
+    private fun maintainHeadr() {
+        serviceScope.launch {
+            combine<Any, String>(
+                tStore.selectedCryptoFlow,
+                tStore.sharedSecretFlow,
+                tStore.jwtFlow
+            ) { v ->
+                HeaderEncoder.encodeHeader(
+                    v.get(0) as Cryptos,
+                    v.get(1) as String,
+                    v.get(2) as String
+                )
+
+            }.collectLatest { header ->
+                // This block runs whenever ANY of the 6 settings change
+                Utils.header = header
+            }
+        }
+    }
+
+    private fun broadcastStatus(message: String, isConnected: Boolean) {
+        sendBroadcast(Intent(ACTION_VPN_STATUS_BROADCAST).apply {
+            putExtra(EXTRA_STATUS_MESSAGE, message)
+            putExtra(EXTRA_IS_CONNECTED, isConnected)
+            setPackage(packageName)
+        })
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm?.notify(NOTIFICATION_ID, createNotification(text))
+    }
+
+    private fun createNotification(text: String): Notification {
+        val pendingIntent = { action: String, code: Int ->
+            val intent = Intent(
+                this,
+                if (action == ACTION_DISCONNECT) TroadService::class.java else MainActivity::class.java
+            )
+            intent.action = action
+            PendingIntent.getService(this, code, intent, PendingIntent.FLAG_IMMUTABLE)
+        }
+
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.troy)
+            .setContentTitle("Troad VPN")
+            .setContentText(text)
+            .setOngoing(true)
+            .addAction(
+                R.drawable.cross,
+                "Disconnect",
+                pendingIntent(ACTION_DISCONNECT, PENDING_INTENT_REQUEST_CODE_DISCONNECT)
+            )
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            NOTIFICATION_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_LOW
+        )
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+    }
+
+    override fun onDestroy() {
+        serviceScope.cancel()
+        super.onDestroy()
     }
 }

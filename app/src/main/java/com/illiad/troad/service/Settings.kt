@@ -1,4 +1,4 @@
-package com.illiad.troad
+package com.illiad.troad.service
 
 import com.illiad.troad.model.Duration
 import com.illiad.troad.service.security.Cryptos
@@ -8,7 +8,6 @@ data class Settings(
     val port: Int,
     val cacert: String,
     val crypto: Cryptos,
-    val secret: String?,
     val jwt: String?,
     val username: String?,
     val password: String?,

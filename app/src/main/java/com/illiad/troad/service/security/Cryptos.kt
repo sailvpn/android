@@ -1,7 +1,9 @@
 package com.illiad.troad.service.security
 
-import java.util.Optional
-
+/**
+ * Pure Kotlin Cryptos Enum.
+ * Removed Java Optional and JvmStatic for KMP compatibility.
+ */
 enum class Cryptos(val value: String, val code: Int, val length: Int) {
     JWT2("JWT2", 0x09, 0),
     JWT("JWT", 0x07, 0),
@@ -34,18 +36,23 @@ enum class Cryptos(val value: String, val code: Int, val length: Int) {
     HMAC_SHA3_224("HmacSHA3-224", 0xB1, 28),
     HMAC_SHA3_256("HmacSHA3-256", 0xC1, 32),
     HMAC_SHA3_384("HmacSHA3-384", 0xD1, 48),
-    HMAC_SHA3_512("HmacSHA3-512", 0xE1, 64);
+    HMAC_SHA3_512("HmacSHA3-512", 0xE1, 64),
+    NONE("NONE", 0x00, 0);
 
     companion object {
         val AvailableCryptos = listOf(JWT, JWT2, SHA_256)
 
-        @JvmStatic
-        fun fromValue(value: String?): Optional<Cryptos> {
-            if (value == null) return Optional.empty()
-            return Optional.ofNullable(entries.find { it.value == value })
+        /**
+         * Replaces Optional<Cryptos>.
+         * Returns null if the value doesn't match any enum entry.
+         */
+        fun fromValue(value: String?): Cryptos? {
+            if (value == null) return null
+            return entries.find { it.value == value }
         }
 
-        // Optional helper for looking up by code
-        fun fromCode(code: Int): Cryptos? = entries.find { it.code == code }
+        fun fromCode(code: Int): Cryptos? =
+            entries.find { it.code == code }
     }
 }
+
