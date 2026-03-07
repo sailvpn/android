@@ -54,8 +54,11 @@ android {
 
 dependencies {
     // --- KOTLIN NATIVE REPLACEMENTS ---
+
+    // Use the BOM defined in your TOML
+    implementation(platform(libs.androidx.compose.bom))
+
     // Networking (Replaces Reactor/Netty)
-    val ktorVersion = "3.4.1"
     implementation(libs.ktor.client.android)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
@@ -74,11 +77,11 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
     implementation(composeBom)
     implementation(libs.androidx.compose.ui)
-    implementation(libs.material3)
+    implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.compose)
+    implementation(libs.androidx.activity.compose)
 
     // --- DATA & CORE ---
     implementation(libs.androidx.datastore.preferences)
