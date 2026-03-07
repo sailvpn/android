@@ -74,11 +74,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // --- COMPOSE & UI ---
-    val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
+    val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
-    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.ui)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
@@ -92,7 +92,7 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.ui.tooling)
 
     // native archives
     implementation(files("libs/engine.aar"))
