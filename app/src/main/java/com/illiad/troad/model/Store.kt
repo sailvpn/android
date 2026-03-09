@@ -17,6 +17,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "tr
 
 object StoreKeys {
     val SERVER_DOMAIN = stringPreferencesKey("server_domain")
+    val SNI = stringPreferencesKey("sni")
     val SERVER_PORT = intPreferencesKey("server_port")
     val SELECTED_CRYPTO = stringPreferencesKey("selected_crypto")
     val SHARED_SECRET = stringPreferencesKey("shared_secret")
@@ -43,6 +44,17 @@ class TroadStore(appContext: Context) {
     suspend fun saveServerDomain(domain: String) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_DOMAIN] = domain
+        }
+    }
+
+    val sniFlow: Flow<String> = context.dataStore.data
+        .map { settings ->
+            settings[StoreKeys.SNI] ?: ""
+        }
+
+    suspend fun saveSni(sni: String) {
+        context.dataStore.edit { settings ->
+            settings[StoreKeys.SNI] = sni
         }
     }
 

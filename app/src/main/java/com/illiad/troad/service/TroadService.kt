@@ -7,6 +7,7 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.illiad.troad.Consts
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
@@ -120,13 +121,12 @@ class TroadService : VpnService() {
         // If your Go implementation is blocking, this call won't return until stopped.
         //	StartTroad(fd, "proxy.example.com:443", "my-token", "/path/to/ca.pem", "myserver.com", 1300)
         val result = Troadengine.startTroad(
-            fd,
-            settings.domain ?: "127.0.0.1",
-            settings.port ?: 5001,
-            MTU,
-            caCert = settings.cacert,
-            header = Utils.header!!,
-            sni = ""
+            fd.toLong(),
+            settings.domain + ":" + settings.port.toString(),
+            Utils.header!!,
+            settings.cacert,
+            settings.sni,
+            MTU.toLong()
         )
 
         if (result != null) {
@@ -174,6 +174,7 @@ class TroadService : VpnService() {
             // Combine all flows into a single configuration stream
             combine<Any, Settings>(
                 tStore.serverDomainFlow,
+                tStore.sniFlow,
                 tStore.serverPortFlow,
                 tStore.caCertFlow,
                 tStore.selectedCryptoFlow,
@@ -186,9 +187,10 @@ class TroadService : VpnService() {
                 // This data class acts as a snapshot of your current settings
                 Settings(
                     domain = v[0] as String,
-                    port = v[1] as Int,
-                    cacert = v[2] as String,
-                    crypto = v[3] as Cryptos,
+                    sni = v[1] as String,
+                    port = v[2] as Int,
+                    cacert = v[3] as String,
+                    crypto = v[4] as Cryptos,
                     jwt = v[5] as String,
                     username = v[6] as String,
                     password = v[7] as String,

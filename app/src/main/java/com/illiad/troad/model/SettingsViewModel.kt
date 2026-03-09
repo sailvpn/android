@@ -32,6 +32,10 @@ class SettingsViewModel(
     private val _uiServerDomainInput = MutableStateFlow("")
     val uiServerDomainInput = _uiServerDomainInput.asStateFlow()
 
+    private val _uiSniInput = MutableStateFlow("")
+    val uiSniInput = _uiSniInput.asStateFlow()
+
+
     private val _uiServerPortInput = MutableStateFlow("")
     val uiServerPortInput = _uiServerPortInput.asStateFlow()
 
@@ -88,6 +92,8 @@ class SettingsViewModel(
     // to react to the debounced state, or it can just rely on errorMessage.
     var debouncedUiServerDomain by mutableStateOf("")
         private set // UI can read this if it's made public or through a getter
+    var debouncedUiSni by mutableStateOf("")
+        private set
     var debouncedUiServerPort by mutableStateOf("")
         private set
     var debouncedUiSharedSecret by mutableStateOf("")
@@ -107,11 +113,13 @@ class SettingsViewModel(
         // 1. Initial Load: Populate the UI from the Store
         viewModelScope.launch {
             val initialDomain = tStore.serverDomainFlow.first()
+            val initialSni = tStore.sniFlow.first()
             val initialPort =
                 tStore.serverPortFlow.first().let { if (it == 0) "" else it.toString() }
             val initialSecret = tStore.sharedSecretFlow.first()
 
             _uiServerDomainInput.value = initialDomain
+            _uiSniInput.value = initialSni
             _uiServerPortInput.value = initialPort
             _uiSharedSecretInput.value = initialSecret
             _username.value = tStore.usernameFlow.first()
@@ -120,6 +128,7 @@ class SettingsViewModel(
 
             // Sync internal debounced state
             debouncedUiServerDomain = initialDomain
+            debouncedUiSni = initialSni
             debouncedUiServerPort = initialPort
             debouncedUiSharedSecret = initialSecret
 
@@ -133,6 +142,18 @@ class SettingsViewModel(
                     debouncedUiServerDomain = domain
                     if (validateDomain()) {
                         tStore.saveServerDomain(domain) // Save to Store
+                    }
+                }
+        }
+
+        // Debounced SNI: Auto-save to Store
+        viewModelScope.launch {
+            _uiSniInput
+                .debounce(debounceMillis)
+                .collectLatest { sni ->
+                    debouncedUiSni = sni
+                    if (validateSni()) {
+                        tStore.saveSni(sni) // Save to Store
                     }
                 }
         }
@@ -190,6 +211,11 @@ class SettingsViewModel(
         return true
     }
 
+    private fun validateSni(): Boolean {
+        // Use debouncedUiSni for validation
+        return true
+    }
+
     private fun validatePort(): Boolean {
         // Use debouncedUiServerPort for validation
         if (debouncedUiServerPort.isBlank()) {
@@ -219,6 +245,11 @@ class SettingsViewModel(
     fun onDomainChange(newDomain: String) {
         _uiServerDomainInput.value = newDomain
     }
+
+    fun onSniChange(newSni: String) {
+        _uiSniInput.value = newSni
+    }
+
 
     fun onPortChange(newPortString: String) {
         _uiServerPortInput.value = newPortString

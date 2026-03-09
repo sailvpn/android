@@ -5,6 +5,7 @@ import com.illiad.troad.service.security.Cryptos
 
 data class Settings(
     val domain: String,
+    val sni: String,
     val port: Int,
     val cacert: String,
     val crypto: Cryptos,

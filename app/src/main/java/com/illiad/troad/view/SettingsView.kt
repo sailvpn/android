@@ -45,6 +45,7 @@ fun SettingsView(
     var showJwtDialog by remember { mutableStateOf(false) }
 
     val domainInput by viewModel.uiServerDomainInput.collectAsState()
+    val sniInput by viewModel.uiSniInput.collectAsState()
     val portInput by viewModel.uiServerPortInput.collectAsState()
     val secretInput by viewModel.uiSharedSecretInput.collectAsState()
 
@@ -103,7 +104,14 @@ fun SettingsView(
                 singleLine = true,
                 isError = viewModel.errorMessage?.contains("Domain", ignoreCase = true) == true
             )
-
+            OutlinedTextField(
+                value = sniInput,
+                onValueChange = { viewModel.onSniChange(it) },
+                label = { Text("Server Name Identifier") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = viewModel.errorMessage?.contains("SNI", ignoreCase = true) == true
+            )
             OutlinedTextField(
                 value = portInput,
                 onValueChange = { viewModel.onPortChange(it) },
