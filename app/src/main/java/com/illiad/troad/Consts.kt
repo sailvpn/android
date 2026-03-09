@@ -3,7 +3,6 @@ package com.illiad.troad
 object Consts {
     const val TS = "TroadService"
     const val TM = "TokenManager"
-    const val CM = "CertManager"
     const val VM = "SettingsViewModel"
 
     const val DNS1 = "8.8.8.8"
