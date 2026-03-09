@@ -31,6 +31,7 @@ import com.illiad.troad.service.security.client.TokenManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.IOException
+import troadengine.Troadengine
 
 @SuppressLint("VpnServicePolicy")
 class TroadService : VpnService() {
@@ -114,19 +115,21 @@ class TroadService : VpnService() {
 
         Log.i(TS, "Starting tun2socks engine on FD: $fd")
 
+
         // 1. Start the native engine.
         // If your Go implementation is blocking, this call won't return until stopped.
-        val result = NativeEngine.startTun2Socks(
-            fd = fd,
-            proxyAddr = settings.domain ?: "127.0.0.1",
-            proxyPort = settings.port ?: 5001,
-            mtu = MTU,
+        //	StartTroad(fd, "proxy.example.com:443", "my-token", "/path/to/ca.pem", "myserver.com", 1300)
+        val result = Troadengine.startTroad(
+            fd,
+            settings.domain ?: "127.0.0.1",
+            settings.port ?: 5001,
+            MTU,
             caCert = settings.cacert,
             header = Utils.header!!,
             sni = ""
         )
 
-        if (result != 0) {
+        if (result != null) {
             Log.e(TS, "Native engine failed to start with code: $result")
             throw RuntimeException("tun2socks startup failure")
         }
@@ -142,7 +145,7 @@ class TroadService : VpnService() {
             // 3. Ensure the engine stops if the coroutine is cancelled (e.g., stopVpn() called)
             withContext(NonCancellable) {
                 Log.i(TS, "Shutting down native tun2socks engine")
-                NativeEngine.stopTun2Socks()
+                Troadengine.stopTroad()
             }
         }
     }

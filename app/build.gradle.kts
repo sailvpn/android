@@ -95,5 +95,5 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     // native archives
-    implementation(files("libs/engine.aar"))
+    implementation(files("libs/troadengine.aar"))
 }
