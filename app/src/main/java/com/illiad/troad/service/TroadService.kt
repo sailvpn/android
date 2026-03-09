@@ -194,7 +194,7 @@ class TroadService : VpnService() {
                     jwt = v[5] as String,
                     username = v[6] as String,
                     password = v[7] as String,
-                    duration = v[8] as Duration
+                    duration = Duration.fromLabel(v[8] as String)
                 )
             }.collectLatest { s ->
                 // This block runs whenever ANY of the 6 settings change

@@ -20,6 +20,11 @@ enum class Duration(val minutes: Long, val label: String) {
         fun fromMinutes(minutes: Long): Duration {
             return entries.find { it.minutes == minutes } ?: ONE_HOUR
         }
+
+        fun fromLabel(label: String): Duration {
+            return entries.find { it.label == label } ?: ONE_HOUR
+        }
+
         val DEFAULT = ONE_HOUR
     }
 }
