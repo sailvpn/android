@@ -4,9 +4,12 @@ object Consts {
     const val TS = "TroadService"
     const val TM = "TokenManager"
     const val VM = "SettingsViewModel"
-
-    const val DNS1 = "8.8.8.8"
-    const val DNS2 = "8.8.4.4"
+    // Native Kotlin logic to determine IP without NetworkInterface.getNetworkInterfaces()
+    const val tunIp10_8_0_2 = "10.8.0.2"
+    const val DNS1111 = "1.1.1.1"
+    const val DNS1001 = "1.0.0.1"
+    const val DNS8888 = "8.8.8.8"
+    const val DNS9999 = "9.9.9.9"
     const val MTU = 1300 // Android VpnService.Builder.establish() will crash on a too high number
 
     const val ACTION_CONNECT = "qmt7e"
