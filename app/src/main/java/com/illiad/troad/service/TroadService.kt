@@ -4,15 +4,18 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.Intent
 import android.net.VpnService
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.illiad.troad.Consts
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
-import com.illiad.troad.Consts.DNS1
-import com.illiad.troad.Consts.DNS2
+import com.illiad.troad.Consts.DNS1001
+import com.illiad.troad.Consts.DNS1111
+import com.illiad.troad.Consts.DNS8888
+import com.illiad.troad.Consts.DNS9999
 import com.illiad.troad.Consts.EXTRA_IS_CONNECTED
 import com.illiad.troad.Consts.EXTRA_STATUS_MESSAGE
 import com.illiad.troad.Consts.MTU
@@ -21,9 +24,11 @@ import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_NAME
 import com.illiad.troad.Consts.NOTIFICATION_ID
 import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_DISCONNECT
 import com.illiad.troad.Consts.TS
+import com.illiad.troad.Consts.tunIp10_8_0_2
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
 import com.illiad.troad.Utils
+import com.illiad.troad.Utils.settings
 import com.illiad.troad.model.Duration
 import com.illiad.troad.model.TroadStore
 import com.illiad.troad.service.security.Cryptos
@@ -86,19 +91,18 @@ class TroadService : VpnService() {
 
     private fun establishVpnInterface(): Boolean {
         return try {
-            // Native Kotlin logic to determine IP without NetworkInterface.getNetworkInterfaces()
-            val tunIp = "10.8.0.2"
-
             vpnInterface = Builder()
                 .setSession(getString(R.string.app_name))
-                .addAddress(tunIp, 24)
+                .addAddress(tunIp10_8_0_2, 24)
                 .addRoute("0.0.0.0", 0)
-                .addDnsServer(DNS1)
-                .addDnsServer(DNS2)
+                .addDnsServer(DNS1111)
+                .addDnsServer(DNS9999)
+                .addDnsServer(DNS8888)
+                .addDnsServer(DNS1001)
                 .addDisallowedApplication(packageName)
                 .setMtu(MTU)
                 .establish()
-
+            Log.i(TS, "Establishing VPN Interface")
             vpnInterface != null
         } catch (e: Exception) {
             Log.e(TS, "Vpn Builder failed", e)
@@ -111,45 +115,32 @@ class TroadService : VpnService() {
      * Executes the native tun2socks engine.
      * This function suspends until the VPN is stopped or the coroutine is cancelled.
      */
-    private suspend fun runVpnStack(fd: Int) = withContext(Dispatchers.IO) {
-        val settings = Utils.settings ?: return@withContext
 
-        Log.i(TS, "Starting tun2socks engine on FD: $fd")
+    private fun runVpnStack(fd: Int) {
 
+        // Using a raw Thread ensures Go doesn't block the Coroutine Dispatcher
+        Thread({
+            try {
+                Log.i(TS, "Go Engine Thread Started")
 
-        // 1. Start the native engine.
-        // If your Go implementation is blocking, this call won't return until stopped.
-        //	StartTroad(fd, "proxy.example.com:443", "my-token", "/path/to/ca.pem", "myserver.com", 1300)
-        val result = Troadengine.startTroad(
-            fd.toLong(),
-            settings.domain + ":" + settings.port.toString(),
-            Utils.header!!,
-            settings.cacert,
-            settings.sni,
-            MTU.toLong()
-        )
+                // This is the call that blocks forever until stopTroad() is called
+                Troadengine.startTroad(
+                    fd.toLong(),
+                    settings!!.domain + ":" + settings!!.port.toString(),
+                    Utils.header!!,
+                    settings!!.cacert,
+                    settings!!.sni,
+                    MTU.toLong()
+                )
 
-        if (result != null) {
-            Log.e(TS, "Native engine failed to start with code: $result")
-            throw RuntimeException("tun2socks startup failure")
-        }
-
-        // 2. Keep the coroutine alive and monitor for cancellation
-        try {
-            while (isActive) {
-                // Check if the interface is still valid
-                if (vpnInterface == null) break
-                delay(1000)
+                Log.i(TS, "Go Engine Thread Exited Normally")
+            } catch (e: Exception) {
+                Log.e(TS, "Go Engine Error: ${e.message}")
+                // If it crashes, make sure we clean up the Android side
+                Handler(Looper.getMainLooper()).post { stopVpn() }
             }
-        } finally {
-            // 3. Ensure the engine stops if the coroutine is cancelled (e.g., stopVpn() called)
-            withContext(NonCancellable) {
-                Log.i(TS, "Shutting down native tun2socks engine")
-                Troadengine.stopTroad()
-            }
-        }
+        }, "GoEngineThread").start()
     }
-
 
     private fun stopVpn() {
         broadcastStatus("Disconnected", false)
@@ -198,7 +189,7 @@ class TroadService : VpnService() {
                 )
             }.collectLatest { s ->
                 // This block runs whenever ANY of the 6 settings change
-                Utils.settings = s
+                settings = s
             }
         }
     }
