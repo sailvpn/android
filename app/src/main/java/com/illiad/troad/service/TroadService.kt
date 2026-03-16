@@ -38,6 +38,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.IOException
 import troadengine.Troadengine
+import java.io.File
 
 @SuppressLint("VpnServicePolicy")
 class TroadService : VpnService() {
@@ -121,6 +122,9 @@ class TroadService : VpnService() {
         // Using a raw Thread ensures Go doesn't block the Coroutine Dispatcher
         Thread({
             try {
+
+                val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
+                certFile.writeText(settings!!.cacert)
                 Log.i(TS, "Go Engine Thread Started")
 
                 // This is the call that blocks forever until stopTroad() is called
@@ -128,7 +132,7 @@ class TroadService : VpnService() {
                     fd.toLong(),
                     settings!!.domain + ":" + settings!!.port.toString(),
                     Utils.header!!,
-                    settings!!.cacert,
+                    certFile.absolutePath,
                     settings!!.sni,
                     MTU.toLong()
                 )
