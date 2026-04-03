@@ -28,7 +28,7 @@ object Secret {
 
     fun offset(): ByteArray {
         // Kotlin Random range: nextInt(min, max)
-        val offsetLen = random.nextInt(MIN, MAX + MIN)
+        val offsetLen = random.nextInt(MIN, MAX)
         return random.nextBytes(offsetLen)
     }
 
