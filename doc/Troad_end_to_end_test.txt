@@ -48,3 +48,8 @@ Let's say you are running your SOCKS5 proxy server directly on your host machine
 		•Instead, your Android app must connect to 10.0.2.2:1080. When it does this, the emulator's virtual router will correctly forward the traffic to your host machine at 127.0.0.1:1080.
 		
 This setup is specifically designed so that you can run a backend server on your development machine and have your Android app in the emulator connect to it for seamless debugging and testing.
+
+3. command line from android
+install "Termux" from the playstore in android, this is a command line app for android
+// command to connect to an UDP server, the UDP server must not  colocate with proxy server
+echo "hello, udp" | nc -u -w 1 192.168.1.31 5005
