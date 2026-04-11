@@ -111,15 +111,20 @@ class TokenManager private constructor(context: Context) {
         return try {
             val parts = jwt.split(".")
             if (parts.size < 2) return Instant.DISTANT_PAST
+
+            // 1. Decode the payload (middle part of the JWT)
             val payload = Base64.decode(parts[1]).decodeToString()
             val json = Json.parseToJsonElement(payload).jsonObject
-            val exp = json["expiresAt"]?.jsonPrimitive?.longOrNull ?: return Instant.DISTANT_PAST
-            Instant.fromEpochMilliseconds(exp)
+
+            // 2. Extract standard "exp" (Seconds)
+            val exp = json["exp"]?.jsonPrimitive?.longOrNull ?: return Instant.DISTANT_PAST
+
+            // 3. Convert Seconds to Instant
+            Instant.fromEpochSeconds(exp)
         } catch (e: Exception) {
             Instant.DISTANT_PAST
         }
     }
-
 
 
     companion object {
