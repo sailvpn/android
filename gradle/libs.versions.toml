@@ -1,7 +1,7 @@
 [versions]
 # Project & Compiler (Upgrade to 2.1.0 to fix TokenManager errors)
-agp = "8.7.2"
-kotlin = "2.1.0"
+agp = "9.2.1"
+kotlin = "2.2.10"
 coreKtx = "1.15.0"
 
 # Lifecycle & Activity
