@@ -84,7 +84,7 @@ fun MainView(viewModel: MainViewModel) {
 
             // VPN Status Text Message Block
             Text(
-                text = viewModel.vpnStatusMessage,
+                text = viewModel.vpnState.statusLabel,
                 style = MaterialTheme.typography.headlineMedium
             )
 

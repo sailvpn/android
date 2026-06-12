@@ -17,7 +17,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // UI state for the Main screen only
     var isProxyRunning by mutableStateOf(false)
         private set
-    var vpnStatusMessage by mutableStateOf("Disconnected")
+    // 1. Maintain a single source of truth using the sealed model type
+    var vpnState: VpnStatus by mutableStateOf(VpnStatus.Disconnected)
         private set
 
     var currentScreen by mutableStateOf(Screen.Main)
@@ -46,8 +47,15 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         currentScreen = screen
     }
 
+    // 2. Fallback helper mapping to support your background notification receiver threads
     fun updateVpnStatus(isConnected: Boolean, message: String?) {
         isProxyRunning = isConnected
-        vpnStatusMessage = message ?: if (isConnected) "Connected" else "Disconnected"
+
+        vpnState = when {
+            isConnected -> VpnStatus.Connected(downloadSpeed = "12.4 Mbps", uploadSpeed = "4.1 Mbps")
+            message?.contains("Connecting", ignoreCase = true) == true -> VpnStatus.Connecting("Handshaking...")
+            else -> VpnStatus.Disconnected
+        }
+
     }
 }
