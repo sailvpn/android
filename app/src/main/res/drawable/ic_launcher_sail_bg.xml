@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+        android:width="108dp"
+        android:height="108dp"
+        android:viewportWidth="108"
+        android:viewportHeight="108">
+
+    <!-- Normalizes the massive 115,262 offset down, then scales by 25% to fit inside the safe circle -->
+    <group
+            android:scaleX="0.25"
+            android:scaleY="0.25"
+            android:translateX="31.0"
+            android:translateY="26.0">
+
+        <group
+                android:translateX="-115"
+                android:translateY="-262">
+
+            <!-- Solid white backdrop supporting system UI engine theme colors -->
+            <path
+                    android:fillColor="#FFFFFFFF"
+                    android:fillType="nonZero"
+                    android:pathData="M 119.190911,265.324772
+                                  A 205.499509,205.499509 0,0,1 221.065612,483.54685
+                                  L 221.065612,483.54685
+                                  A 189.954541,189.954541 0,0,0 300.00126,376.204132
+                                  M 119.190911,265.324772
+                                  A 216.999003,216.999003 0,0,1 300.00126,376.204132
+                                  Z" />
+        </group>
+    </group>
+</vector>
