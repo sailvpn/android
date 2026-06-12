@@ -7,4 +7,15 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Sunny Coastline Core Color Architecture Map -->
+    <color name="vpn_primary">#1E3A8A</color>       <!-- Deep Ocean Navy Base -->
+    <color name="vpn_accent">#0284C7</color>        <!-- Clear Wave Blue -->
+    <color name="vpn_coral">#FF70A6</color>         <!-- Warm Friendly Coral Action Node -->
+    <color name="vpn_gold">#FFE4A7</color>          <!-- Soft Sand-Gold Highlights -->
+
+    <!-- Background Canvas Steps -->
+    <color name="gradient_midnight">#020617</color>
+    <color name="gradient_navy">#000080</color>
+    <color name="gradient_deep_ocean">#00032C</color>
+    <color name="slate_100">#F1F5F9</color>
 </resources>

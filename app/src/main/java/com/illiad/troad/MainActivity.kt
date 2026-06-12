@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
 
     private fun splash() {
         setContent {
-            TroadTheme(darkTheme = false) {
+            TroadTheme(darkTheme = true) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     // Use Crossfade for a smooth, lazy transition
                     Crossfade(targetState = mainViewModel.currentScreen) { screen ->
