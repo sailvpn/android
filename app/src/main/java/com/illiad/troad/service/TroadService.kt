@@ -71,14 +71,18 @@ class TroadService : VpnService() {
 
     private fun handleConnect() {
         if (vpnInterface != null) return
-
-        startForeground(NOTIFICATION_ID, createNotification("Connecting..."))
+        // 1. Swap to Connecting: Use the offline outline layout asset as a fallback indicator
+        startForeground(
+            NOTIFICATION_ID,
+            createNotification("Connecting...", R.drawable.ic_vpn_off)
+        )
 
         vpnJob = serviceScope.launch {
             try {
                 if (establishVpnInterface()) {
-                    runVpnStack(vpnInterface!!.fd) // Logic for tun2socks / native engine goes here
-                    updateNotification("VPN Active")
+                    runVpnStack(vpnInterface!!.fd) // Logic for tun2socks/native engine
+                    // 2. Swap to Connected: The tunnel is active, trigger the solid filled icon asset!
+                    updateNotification("VPN Active", R.drawable.ic_vpn_on)
                     broadcastStatus("Connected", true)
                 } else {
                     stopVpn()
@@ -236,12 +240,18 @@ class TroadService : VpnService() {
         })
     }
 
-    private fun updateNotification(text: String) {
+    private fun updateNotification(text: String, iconResourceDrawableId: Int) {
         val nm = getSystemService(NotificationManager::class.java)
-        nm?.notify(NOTIFICATION_ID, createNotification(text))
+        nm?.notify(NOTIFICATION_ID, createNotification(text, iconResourceDrawableId))
     }
 
-    private fun createNotification(text: String): Notification {
+    /**
+     * Generates an optimized, low-overhead system notification layout profile.
+     *
+     * @param text The status description message string to write out inside the panel drawer.
+     * @param iconResId The target asset file reference (Offline layout line art vs Active bold fill).
+     */
+    private fun createNotification(text: String, iconResId: Int): Notification {
         val pendingIntent = { action: String, code: Int ->
             val intent = Intent(
                 this,
@@ -252,12 +262,14 @@ class TroadService : VpnService() {
         }
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.troy)
+            // Set both small and large to the identical token asset id
+            // This ensures the status bar line and expanded tray panel sync status identically
+            .setSmallIcon(iconResId)
             .setContentTitle("Troad VPN")
             .setContentText(text)
             .setOngoing(true)
             .addAction(
-                R.drawable.cross,
+                R.drawable.ic_vpn_off,
                 "Disconnect",
                 pendingIntent(ACTION_DISCONNECT, PENDING_INTENT_REQUEST_CODE_DISCONNECT)
             )
