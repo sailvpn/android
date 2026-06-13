@@ -53,9 +53,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
         vpnState = when {
             isConnected -> VpnStatus.Connected(downloadSpeed = "12.4 Mbps", uploadSpeed = "4.1 Mbps")
-            message?.contains("Connecting", ignoreCase = true) == true -> VpnStatus.Connecting("Handshaking...")
+            message?.contains("Connecting", ignoreCase = true) == true -> VpnStatus.Connecting(message)
+            message?.contains("Disconnected", ignoreCase = true) == true -> VpnStatus.Disconnected
+            !message.isNullOrBlank() -> VpnStatus.Error(message)
             else -> VpnStatus.Disconnected
         }
-
     }
 }

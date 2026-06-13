@@ -44,4 +44,13 @@ sealed interface VpnStatus {
         override val statusLabel: String = "Connected"
         override val sailBgColor: Color = OceanTertiaryDark // Sand-Gold Highlights (#FFE4A7)
     }
+
+    /**
+     * ERROR: Something went wrong during setup or execution.
+     * Displays the specific cause to the user.
+     */
+    data class Error(val message: String) : VpnStatus {
+        override val statusLabel: String = message
+        override val sailBgColor: Color = Color(0xFFEF4444) // Error Red
+    }
 }

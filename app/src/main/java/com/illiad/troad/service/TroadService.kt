@@ -142,13 +142,38 @@ class TroadService : VpnService() {
         Thread({
             try {
                 val currentSettings = settings ?: throw IllegalStateException("VPN Settings not loaded.")
+                
+                // VALIDATION BLOCK: Check for missing critical configuration
+                if (currentSettings.domain.isBlank()) {
+                    throw IllegalStateException("Server Domain is not configured.")
+                }
+                if (currentSettings.port == 0) {
+                    throw IllegalStateException("Server Port is not configured.")
+                }
+                if (currentSettings.cacert.isBlank()) {
+                    throw IllegalStateException("Security CA Certificate is missing.")
+                }
+                
+                // Crypto-specific validation
+                when (currentSettings.crypto) {
+                    Cryptos.JWT, Cryptos.JWT2 -> {
+                        if (currentSettings.jwt.isNullOrBlank()) {
+                            throw IllegalStateException("Authentication Token (JWT) is missing.")
+                        }
+                    }
+                    Cryptos.SHA_256 -> {
+                        // Assuming password/secret is used for SHA-256
+                        if (currentSettings.password.isNullOrBlank()) {
+                            throw IllegalStateException("Shared Secret/Password is not set.")
+                        }
+                    }
+                    else -> {}
+                }
+
                 val currentHeader = Utils.header ?: throw IllegalStateException("Security Header not initialized.")
 
                 // SOFTWARE FAIL CHECK: Validate file system write health immediately
                 val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
-                if (currentSettings.cacert.isEmpty()) {
-                    throw IllegalStateException("Missing necessary security CA Certificates.")
-                }
                 certFile.writeText(currentSettings.cacert)
 
                 Log.i(TS, "Go Engine Thread Started")
@@ -167,7 +192,8 @@ class TroadService : VpnService() {
             } catch (e: IllegalStateException) {
                 // SOFTWARE FAIL: Missing assets or native library linking failures
                 Log.e(TS, "Software Setup Aborted: ${e.message}")
-                Handler(Looper.getMainLooper()).post { handleSoftwareFailure("Software Setup Error: ${e.message}") }
+                val displayMsg = e.message ?: "Software Setup Error"
+                Handler(Looper.getMainLooper()).post { handleSoftwareFailure(displayMsg) }
             } catch (e: Throwable) {
                 // CONNECTION FAIL: Remote server closed, timeout, packet loss, or bad handshake
                 Log.e(TS, "Remote Connection Dropped/Failed: ${e.message}")
