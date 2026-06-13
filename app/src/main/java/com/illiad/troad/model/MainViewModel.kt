@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
@@ -17,9 +18,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // UI state for the Main screen only
     var isProxyRunning by mutableStateOf(false)
         private set
+        
     // 1. Maintain a single source of truth using the sealed model type
     var vpnState: VpnStatus by mutableStateOf(VpnStatus.Disconnected)
         private set
+
+    // NEW: Persistent error queue for the global dialog
+    val errorQueue = mutableStateListOf<String>()
 
     var currentScreen by mutableStateOf(Screen.Main)
         private set
@@ -27,13 +32,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun startProxyService() {
         val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
             action = ACTION_CONNECT
-            // Note: We don't need to pass Extras if the Service reads from TroadStore!
         }
         ContextCompat.startForegroundService(app, startTroad)
-
     }
-
-    // ... rest of the ViewModel (stopProxyService, updateVpnStatus)
 
     fun stopProxyService() {
         Log.d("ViewModel", "Stopping proxy service")
@@ -47,16 +48,29 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         currentScreen = screen
     }
 
+    fun dismissError() {
+        if (errorQueue.isNotEmpty()) {
+            errorQueue.removeAt(0)
+        }
+    }
+
     // 2. Fallback helper mapping to support your background notification receiver threads
     fun updateVpnStatus(isConnected: Boolean, message: String?) {
         isProxyRunning = isConnected
 
-        vpnState = when {
+        val newState = when {
             isConnected -> VpnStatus.Connected(downloadSpeed = "12.4 Mbps", uploadSpeed = "4.1 Mbps")
             message?.contains("Connecting", ignoreCase = true) == true -> VpnStatus.Connecting(message)
             message?.contains("Disconnected", ignoreCase = true) == true -> VpnStatus.Disconnected
             !message.isNullOrBlank() -> VpnStatus.Error(message)
             else -> VpnStatus.Disconnected
         }
+
+        // If it's an error, add it to the persistent queue as well
+        if (newState is VpnStatus.Error) {
+            errorQueue.add(newState.message)
+        }
+
+        vpnState = newState
     }
 }

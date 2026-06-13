@@ -34,10 +34,26 @@ import androidx.compose.ui.unit.dp
 import com.illiad.troad.model.MainViewModel
 import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.components.SmartStateSailLogo
+import androidx.compose.material3.AlertDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainView(viewModel: MainViewModel) {
+
+    // --- NEW: Global Error Popup (Globo) ---
+    // If there are errors in the queue, show the first one
+    if (viewModel.errorQueue.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissError() },
+            title = { Text("Connection Alert") },
+            text = { Text(viewModel.errorQueue.first()) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissError() }) {
+                    Text("Dismiss")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
