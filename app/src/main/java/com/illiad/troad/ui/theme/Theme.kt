@@ -11,6 +11,42 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
+
+// ----------------------------------------------------
+// Custom Gradient Theme Extensions
+// ----------------------------------------------------
+
+@Immutable
+data class TroadGradients(
+    val mainBackground: Brush,
+    val surfaceGradient: Brush? = null
+)
+
+val LocalTroadGradients = staticCompositionLocalOf {
+    TroadGradients(
+        mainBackground = Brush.verticalGradient(listOf(Color.Black, Color.Black))
+    )
+}
+
+private val DarkTroadGradients = TroadGradients(
+    mainBackground = Brush.verticalGradient(
+        listOf(GradientDeepOcean, GradientNavy, GradientDeepOcean)
+    )
+)
+
+private val LightTroadGradients = TroadGradients(
+    mainBackground = Brush.verticalGradient(
+        listOf(OceanBackgroundLight, OceanSurfaceLight, OceanBackgroundLight)
+    )
+)
+
+val MaterialTheme.troadGradients: TroadGradients
+    @Composable
+    get() = LocalTroadGradients.current
 
 // ----------------------------------------------------
 // Color Scheme Architecture Mappings
@@ -62,9 +98,13 @@ fun TroadTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography, // Ensure this matches your project's Typography val
-        content = content
-    )
+    val gradients = if (darkTheme) DarkTroadGradients else LightTroadGradients
+
+    CompositionLocalProvider(LocalTroadGradients provides gradients) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography, // Ensure this matches your project's Typography val
+            content = content
+        )
+    }
 }

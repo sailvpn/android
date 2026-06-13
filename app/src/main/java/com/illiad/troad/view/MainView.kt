@@ -35,6 +35,9 @@ import com.illiad.troad.model.MainViewModel
 import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.components.SmartStateSailLogo
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import com.illiad.troad.ui.theme.troadGradients
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +59,7 @@ fun MainView(viewModel: MainViewModel) {
     }
 
     Scaffold(
+        containerColor = Color.Transparent, // Allow gradient background to show through
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -73,13 +77,13 @@ fun MainView(viewModel: MainViewModel) {
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.Transparent // Transparent Top Bar
                 )
             )
         },
         bottomBar = {
             BottomAppBar(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                containerColor = Color.Transparent, // Transparent Bottom Bar
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
                 TextButton(
@@ -88,7 +92,10 @@ fun MainView(viewModel: MainViewModel) {
                 ) {
                     Icon(Icons.Default.Settings, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Configuration Settings")
+                    Text(
+                        text = "Config",
+                        style = MaterialTheme.typography.titleLarge
+                    )
                 }
             }
         }
@@ -96,6 +103,7 @@ fun MainView(viewModel: MainViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.troadGradients.mainBackground)
                 .padding(innerPadding)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
