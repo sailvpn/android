@@ -10,19 +10,22 @@ object Secret {
     private val random = Random.Default
 
     fun secret(crypto: Cryptos, secret: String, token: String): ByteArray? {
-        return when (crypto) {
-            Cryptos.JWT, Cryptos.JWT2 -> {
-                require(token.isNotEmpty()) { "Token is not configured." }
-                token.encodeToByteArray()
-            }
+        return try {
+            when (crypto) {
+                Cryptos.JWT, Cryptos.JWT2 -> {
+                    if (token.isEmpty()) return null
+                    token.encodeToByteArray()
+                }
 
-            Cryptos.SHA_256 -> {
-                require(secret.isNotEmpty()) { "Secret is not configured." }
-                // Replaces MessageDigest.getInstance("SHA-256")
-                sha256(secret.encodeToByteArray())
-            }
+                Cryptos.SHA_256 -> {
+                    if (secret.isEmpty()) return null
+                    sha256(secret.encodeToByteArray())
+                }
 
-            else -> null
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
