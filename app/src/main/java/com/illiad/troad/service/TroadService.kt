@@ -77,14 +77,22 @@ class TroadService : VpnService() {
         if (vpnInterface != null) return
         startForeground(
             NOTIFICATION_ID,
-            createNotification("Connecting...", AndroidColor.parseColor("#0284C7"))
+            createNotification(
+                "Connecting...",
+                R.drawable.ic_vpn_on,
+                AndroidColor.parseColor("#0284C7")
+            )
         )
 
         vpnJob = serviceScope.launch {
             try {
                 if (establishVpnInterface()) {
                     runVpnStack(vpnInterface!!.fd)
-                    updateNotification("VPN Active", AndroidColor.parseColor("#FFE4A7"))
+                    updateNotification(
+                        "VPN Active",
+                        R.drawable.ic_vpn_on,
+                        AndroidColor.parseColor("#FFE4A7")
+                    )
                     broadcastStatus("Connected", true)
                 } else {
                     // CONNECTION FAIL: System couldn't establish the interface (e.g., restricted profile)
@@ -200,6 +208,7 @@ class TroadService : VpnService() {
         // This alerts the user while keeping the software running smoothly in the background
         updateNotification(
             "Connection Failed. Tap to reconnect.",
+            R.drawable.ic_vpn_off,
             AndroidColor.parseColor("#F1F5F9")
         )
     }
@@ -295,9 +304,9 @@ class TroadService : VpnService() {
         })
     }
 
-    private fun updateNotification(text: String, iconResourceDrawableId: Int) {
+    private fun updateNotification(text: String, iconResId: Int, statusColor: Int) {
         val nm = getSystemService(NotificationManager::class.java)
-        nm?.notify(NOTIFICATION_ID, createNotification(text, iconResourceDrawableId))
+        nm?.notify(NOTIFICATION_ID, createNotification(text, iconResId, statusColor))
     }
 
     /**
@@ -305,8 +314,9 @@ class TroadService : VpnService() {
      *
      * @param text The status description message string to write out inside the panel drawer.
      * @param iconResId The target asset file reference (Offline layout line art vs Active bold fill).
+     * @param statusColor The accent color to apply to the notification UI.
      */
-    private fun createNotification(text: String, iconResId: Int): Notification {
+    private fun createNotification(text: String, iconResId: Int, statusColor: Int): Notification {
         val pendingIntent = { action: String, code: Int ->
             val intent = Intent(
                 this,
@@ -320,6 +330,8 @@ class TroadService : VpnService() {
             // Set both small and large to the identical token asset id
             // This ensures the status bar line and expanded tray panel sync status identically
             .setSmallIcon(iconResId)
+            .setColor(statusColor)
+            .setColorized(true)
             .setContentTitle("Troad VPN")
             .setContentText(text)
             .setOngoing(true)
