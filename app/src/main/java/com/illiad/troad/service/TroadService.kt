@@ -8,6 +8,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
+// Import the normal legacy color system but rename it to AndroidColor
+import android.graphics.Color as AndroidColor
+// Import the modern Compose color system normally
+// import androidx.compose.ui.graphics.Color
 import androidx.core.app.NotificationCompat
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.ACTION_CONNECT
@@ -71,25 +75,25 @@ class TroadService : VpnService() {
 
     private fun handleConnect() {
         if (vpnInterface != null) return
-        // 1. Swap to Connecting: Use the offline outline layout asset as a fallback indicator
         startForeground(
             NOTIFICATION_ID,
-            createNotification("Connecting...", R.drawable.ic_vpn_off)
+            createNotification("Connecting...", AndroidColor.parseColor("#0284C7"))
         )
 
         vpnJob = serviceScope.launch {
             try {
                 if (establishVpnInterface()) {
-                    runVpnStack(vpnInterface!!.fd) // Logic for tun2socks/native engine
-                    // 2. Swap to Connected: The tunnel is active, trigger the solid filled icon asset!
-                    updateNotification("VPN Active", R.drawable.ic_vpn_on)
+                    runVpnStack(vpnInterface!!.fd)
+                    updateNotification("VPN Active", AndroidColor.parseColor("#FFE4A7"))
                     broadcastStatus("Connected", true)
                 } else {
-                    stopVpn()
+                    // CONNECTION FAIL: System couldn't establish the interface (e.g., restricted profile)
+                    handleConnectionFailure("Failed to allocate secure interface.")
                 }
             } catch (e: Exception) {
-                Log.e(TS, "Fatal VPN error", e)
-                stopVpn()
+                // SOFTWARE FAIL: Complete failure inside setup coroutines
+                Log.e(TS, "Fatal Internal Software Crash", e)
+                terminateEntireAppSilently()
             }
         }
     }
@@ -122,16 +126,18 @@ class TroadService : VpnService() {
      */
 
     private fun runVpnStack(fd: Int) {
-
-        // Using a raw Thread ensures Go doesn't block the Coroutine Dispatcher
         Thread({
             try {
-
+                // SOFTWARE FAIL CHECK: Validate file system write health immediately
                 val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
+                if (settings?.cacert.isNullOrEmpty()) {
+                    throw IllegalStateException("Missing necessary security CA Certificates.")
+                }
                 certFile.writeText(settings!!.cacert)
+
                 Log.i(TS, "Go Engine Thread Started")
 
-                // This is the call that blocks forever until stopTroad() is called
+                // blocks here until stopped or network pipe disconnects
                 Troadengine.startTroad(
                     fd.toLong(),
                     settings!!.domain + ":" + settings!!.port.toString(),
@@ -142,10 +148,16 @@ class TroadService : VpnService() {
                 )
 
                 Log.i(TS, "Go Engine Thread Exited Normally")
+            } catch (e: IllegalStateException) {
+                // SOFTWARE FAIL: Missing assets or native library linking failures
+                Log.e(TS, "Software Setup Aborted: ${e.message}")
+                Handler(Looper.getMainLooper()).post { terminateEntireAppSilently() }
             } catch (e: Exception) {
-                Log.e(TS, "Go Engine Error: ${e.message}")
-                // If it crashes, make sure we clean up the Android side
-                Handler(Looper.getMainLooper()).post { stopVpn() }
+                // CONNECTION FAIL: Remote server closed, timeout, packet loss, or bad handshake
+                Log.e(TS, "Remote Connection Dropped/Failed: ${e.message}")
+                Handler(Looper.getMainLooper()).post {
+                    handleConnectionFailure("Server Connection Dropped. Retrying...")
+                }
             }
         }, "GoEngineThread").start()
     }
@@ -165,6 +177,49 @@ class TroadService : VpnService() {
                 stopSelf()
             }
         }
+    }
+
+    /**
+     * CONNECTION FAIL HANDLER: Holds the app process alive in memory space,
+     * resets UI layouts safely to Disconnected states, and alerts the client.
+     */
+    private fun handleConnectionFailure(errorMessage: String) {
+        // 1. Clean up active file tunnels but keep the background service context alive
+        try {
+            vpnInterface?.close()
+        } catch (e: IOException) {
+            Log.e(TS, "Quiet close failure", e)
+        }
+        vpnInterface = null
+        vpnJob?.cancel()
+
+        // 2. Broadcast the error message to MainViewModel to flash the screen layout
+        broadcastStatus(errorMessage, false)
+
+        // 3. Demote notification back to a static, persistent "Disconnected/Idle" icon
+        // This alerts the user while keeping the software running smoothly in the background
+        updateNotification(
+            "Connection Failed. Tap to reconnect.",
+            AndroidColor.parseColor("#F1F5F9")
+        )
+    }
+
+    /**
+     * SOFTWARE FAIL HANDLER: Destroys foreground constraints entirely and
+     * shuts down background execution tasks due to corrupted environments.
+     */
+    private fun terminateEntireAppSilently() {
+        broadcastStatus("Internal Application Error", false)
+        vpnJob?.cancel()
+        try {
+            vpnInterface?.close()
+        } catch (e: Exception) { /* no-op */
+        }
+        vpnInterface = null
+
+        // Kill the foreground notification and exit out of the background loop entirely
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun observeSettings() {
@@ -286,7 +341,33 @@ class TroadService : VpnService() {
     }
 
     override fun onDestroy() {
+        Log.w(TS, "VPN Service is being permanently destroyed by the system wrapper. Cleaning resources...")
+
+        // 1. Instantly alert your frontend UI screens that the tunnel is dead
+        // This forces the SmartStateSailLogo back to its default Disconnected state
+        try {
+            broadcastStatus("Disconnected", false)
+        } catch (e: Exception) {
+            Log.e(TS, "Failed to broadcast final destruction exit loop status", e)
+        }
+
+        // 2. Critical Network Safety Release: Tear down the interface channel
+        // If you skip this, the user's phone will lose all internet connectivity after the app exits!
+        try {
+            vpnInterface?.close()
+            Log.i(TS, "Secure VPN tunnel interface file descriptor closed successfully.")
+        } catch (e: Exception) {
+            Log.e(TS, "Error forcing final close on VPN interface", e)
+        } finally {
+            vpnInterface = null
+        }
+
+        // 3. Force cancel your long-running Go Engine tasks and Coroutine workers
+        vpnJob?.cancel()
         serviceScope.cancel()
+
+        // 4. Clean exit via parent framework call
         super.onDestroy()
     }
+
 }
