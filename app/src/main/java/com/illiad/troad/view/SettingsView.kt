@@ -188,9 +188,9 @@ fun SettingsView(
             }
 
             // GLOBAL FORM INPUT ERROR NOTIFICATION BANNER
-            if (viewModel.errorMessage != null) {
+            viewModel.errorMessage?.let { msg ->
                 Text(
-                    text = viewModel.errorMessage!!,
+                    text = msg,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth()

@@ -16,10 +16,9 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 object HeaderEncoder {
 
     private val CRLF = byteArrayOf(0x0D, 0x0A)
-    fun encodeHeader(crypto: Cryptos, secret: String, token: String): String {
+    fun encodeHeader(crypto: Cryptos, secret: String, token: String): String? {
         // 1. Get secrets from your implementation
-        val secretBytes = Secret.secret(crypto, secret, token)
-            ?: throw IllegalStateException("Secret not initialized")
+        val secretBytes = Secret.secret(crypto, secret, token) ?: return null
         val offset = Secret.offset()
         val signLength = crypto.length
 

@@ -47,7 +47,12 @@ import java.io.File
 @SuppressLint("VpnServicePolicy")
 class TroadService : VpnService() {
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TS, "Unhandled exception in TroadService scope", throwable)
+        // Instead of silent termination, we handle it as a software failure and stop the service gracefully.
+        handleSoftwareFailure("Unexpected background error: ${throwable.localizedMessage}")
+    }
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + exceptionHandler)
     private val tStore by lazy { TroadStore(applicationContext) }
     private lateinit var tokenManager: TokenManager
 
@@ -61,7 +66,7 @@ class TroadService : VpnService() {
         createNotificationChannel()
         observeSettings()
         observeAutorenew()
-        maintainHeadr()
+        maintainHeader()
         Log.d(TS, "VPN Service Created.")
     }
 
@@ -86,8 +91,10 @@ class TroadService : VpnService() {
 
         vpnJob = serviceScope.launch {
             try {
-                if (establishVpnInterface()) {
-                    runVpnStack(vpnInterface!!.fd)
+                val currentVpnInterface = establishVpnInterfaceReturn()
+                if (currentVpnInterface != null) {
+                    vpnInterface = currentVpnInterface
+                    runVpnStack(currentVpnInterface.fd)
                     updateNotification(
                         "VPN Active",
                         R.drawable.ic_vpn_on,
@@ -106,9 +113,9 @@ class TroadService : VpnService() {
         }
     }
 
-    private fun establishVpnInterface(): Boolean {
+    private fun establishVpnInterfaceReturn(): ParcelFileDescriptor? {
         return try {
-            vpnInterface = Builder()
+            Builder()
                 .setSession(getString(R.string.app_name))
                 .addAddress(tunIp10_8_0_2, 24)
                 .addRoute("0.0.0.0", 0)
@@ -119,11 +126,9 @@ class TroadService : VpnService() {
                 .addDisallowedApplication(packageName)
                 .setMtu(MTU)
                 .establish()
-            Log.i(TS, "Establishing VPN Interface")
-            vpnInterface != null
         } catch (e: Exception) {
             Log.e(TS, "Vpn Builder failed", e)
-            false
+            null
         }
     }
 
@@ -136,22 +141,25 @@ class TroadService : VpnService() {
     private fun runVpnStack(fd: Int) {
         Thread({
             try {
+                val currentSettings = settings ?: throw IllegalStateException("VPN Settings not loaded.")
+                val currentHeader = Utils.header ?: throw IllegalStateException("Security Header not initialized.")
+
                 // SOFTWARE FAIL CHECK: Validate file system write health immediately
                 val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
-                if (settings?.cacert.isNullOrEmpty()) {
+                if (currentSettings.cacert.isEmpty()) {
                     throw IllegalStateException("Missing necessary security CA Certificates.")
                 }
-                certFile.writeText(settings!!.cacert)
+                certFile.writeText(currentSettings.cacert)
 
                 Log.i(TS, "Go Engine Thread Started")
 
                 // blocks here until stopped or network pipe disconnects
                 Troadengine.startTroad(
                     fd.toLong(),
-                    settings!!.domain + ":" + settings!!.port.toString(),
-                    Utils.header!!,
+                    currentSettings.domain + ":" + currentSettings.port.toString(),
+                    currentHeader,
                     certFile.absolutePath,
-                    settings!!.sni,
+                    currentSettings.sni,
                     MTU.toLong()
                 )
 
@@ -159,8 +167,8 @@ class TroadService : VpnService() {
             } catch (e: IllegalStateException) {
                 // SOFTWARE FAIL: Missing assets or native library linking failures
                 Log.e(TS, "Software Setup Aborted: ${e.message}")
-                Handler(Looper.getMainLooper()).post { terminateEntireAppSilently() }
-            } catch (e: Exception) {
+                Handler(Looper.getMainLooper()).post { handleSoftwareFailure("Software Setup Error: ${e.message}") }
+            } catch (e: Throwable) {
                 // CONNECTION FAIL: Remote server closed, timeout, packet loss, or bad handshake
                 Log.e(TS, "Remote Connection Dropped/Failed: ${e.message}")
                 Handler(Looper.getMainLooper()).post {
@@ -214,21 +222,39 @@ class TroadService : VpnService() {
     }
 
     /**
-     * SOFTWARE FAIL HANDLER: Destroys foreground constraints entirely and
-     * shuts down background execution tasks due to corrupted environments.
+     * SOFTWARE FAIL HANDLER: Safely shuts down the service due to internal errors (like missing certs),
+     * without killing the whole application process.
      */
-    private fun terminateEntireAppSilently() {
-        broadcastStatus("Internal Application Error", false)
+    private fun handleSoftwareFailure(errorMessage: String) {
+        Log.e(TS, "Software Failure: $errorMessage")
+        
+        // 1. Broadcast the error to UI
+        broadcastStatus(errorMessage, false)
+
+        // 2. Clean up local tunnel resources
         vpnJob?.cancel()
         try {
             vpnInterface?.close()
-        } catch (e: Exception) { /* no-op */
-        }
+        } catch (e: Exception) { /* no-op */ }
         vpnInterface = null
 
-        // Kill the foreground notification and exit out of the background loop entirely
+        // 3. Update notification to error state
+        updateNotification(
+            "Service Error: Tap to check settings.",
+            R.drawable.ic_vpn_off,
+            AndroidColor.parseColor("#F1F5F9")
+        )
+
+        // 4. Stop the service only
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * Legacy helper - now redirects to handleSoftwareFailure to prevent app exit
+     */
+    private fun terminateEntireAppSilently() {
+        handleSoftwareFailure("Internal Application Error")
     }
 
     private fun observeSettings() {
@@ -254,13 +280,15 @@ class TroadService : VpnService() {
                     port = v[2] as Int,
                     cacert = v[3] as String,
                     crypto = v[4] as Cryptos,
-                    jwt = v[5] as String,
-                    username = v[6] as String,
-                    password = v[7] as String,
-                    duration = Duration.fromLabel(v[8] as String)
+                    jwt = v[6] as String?,
+                    username = v[7] as String?,
+                    password = v[8] as String?,
+                    duration = v[9] as Duration?
                 )
+            }.catch { e ->
+                Log.e(TS, "Settings flow failed", e)
             }.collectLatest { s ->
-                // This block runs whenever ANY of the 6 settings change
+                // This block runs whenever ANY of the settings change
                 settings = s
             }
         }
@@ -275,23 +303,26 @@ class TroadService : VpnService() {
         }
     }
 
-    // crate a new headr whenever crypt, sharesecret, or jwt changes
-    private fun maintainHeadr() {
+    // create a new header whenever crypto, sharedsecret, or jwt changes
+    private fun maintainHeader() {
         serviceScope.launch {
-            combine<Any, String>(
+            combine<Any, String?>(
                 tStore.selectedCryptoFlow,
                 tStore.sharedSecretFlow,
                 tStore.jwtFlow
             ) { v ->
                 HeaderEncoder.encodeHeader(
-                    v.get(0) as Cryptos,
-                    v.get(1) as String,
-                    v.get(2) as String
+                    v[0] as Cryptos,
+                    v[1] as String,
+                    v[2] as String
                 )
-
             }.collectLatest { header ->
-                // This block runs whenever ANY of the 6 settings change
-                Utils.header = header
+                // This block runs whenever ANY of the 3 settings change
+                if (header != null) {
+                    Utils.header = header
+                } else {
+                    Log.e(TS, "Failed to encode header: parameters might be missing.")
+                }
             }
         }
     }

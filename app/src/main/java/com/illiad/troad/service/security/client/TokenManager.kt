@@ -77,31 +77,33 @@ class TokenManager private constructor(context: Context) {
             val expiresAt = getExpireInstant(jwt)
             val now = Clock.System.now()
 
+            val currentSettings = Utils.settings
             // Logic: if current time is before expiry but within the renewal window
             if (now < expiresAt && (expiresAt - now).inWholeMinutes < (10 * interval / 60000)) {
                 val data = postGenerate(
                     TokenGenerateRequest(
                         currentToken = jwt,
-                        expirationMinutes = Utils.settings!!.duration?.minutes ?: 60
+                        expirationMinutes = currentSettings?.duration?.minutes ?: 60
                     )
                 ) ?: throw Exception("Failed renewing token!")
-                tStore.saveJwt(data.token!!)
+                data.token?.let { tStore.saveJwt(it) }
                 return
             }
         }
 
         // Fallback to credentials
-        val user = Utils.settings?.username
-        val pass = Utils.settings?.password
+        val currentSettings = Utils.settings
+        val user = currentSettings?.username
+        val pass = currentSettings?.password
         if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
             val data = postGenerate(
                 TokenGenerateRequest(
                     username = user,
                     password = pass,
-                    expirationMinutes = Utils.settings!!.duration?.minutes ?: 60
+                    expirationMinutes = currentSettings.duration?.minutes ?: 60
                 )
             ) ?: throw Exception("Failed renewing token!")
-            tStore.saveJwt(data.token!!)
+            data.token?.let { tStore.saveJwt(it) }
         }
 
     }
