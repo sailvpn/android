@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialogDefaults.containerColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,10 @@ import com.illiad.troad.model.SettingsViewModel
 import com.illiad.troad.service.security.Cryptos
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.Color
+
+import com.illiad.troad.ui.theme.troadGradients
+import androidx.compose.foundation.background
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +80,7 @@ fun SettingsView(
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("Server Settings") },
@@ -88,22 +94,23 @@ fun SettingsView(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.Transparent,     // Makes TopBar background transparent
+                    scrolledContainerColor = Color.Transparent // Remains transparent when scrolling
                 )
             )
         }
     ) { paddingValues ->
         Column(
             modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.troadGradients.mainBackground)
                 .padding(paddingValues)
                 .padding(16.dp)
-                .fillMaxSize()
                 // Enable safe vertical touch scrolling over smaller phone display dimensions
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
             // SERVER CORE NETWORK FIELDS GROUP
             OutlinedTextField(
                 value = domainInput,
@@ -116,6 +123,7 @@ fun SettingsView(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 isError = viewModel.errorMessage?.contains("Domain", ignoreCase = true) == true
+
             )
 
             OutlinedTextField(

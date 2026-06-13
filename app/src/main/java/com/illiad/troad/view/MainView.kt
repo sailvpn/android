@@ -88,7 +88,8 @@ fun MainView(viewModel: MainViewModel) {
             ) {
                 TextButton(
                     onClick = { viewModel.navigateTo(Screen.Settings) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
                 ) {
                     Icon(Icons.Default.Settings, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -113,6 +114,18 @@ fun MainView(viewModel: MainViewModel) {
             SmartStateSailLogo(
                 status = viewModel.vpnState,
                 modifier = Modifier.size(100.dp) // Generous central focus sizing
+            )
+
+            Text(
+                text = "Sail",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+
+            Text(
+                text = "harness the web",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.tertiary
             )
 
             Spacer(modifier = Modifier.height(16.dp))
