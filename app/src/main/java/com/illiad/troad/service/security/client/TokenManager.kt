@@ -3,8 +3,9 @@ package com.illiad.troad.service.security.client
 import android.content.Context
 import android.util.Log
 import com.illiad.troad.Consts.TM
-import com.illiad.troad.Utils
+import com.illiad.troad.model.AutoRenew
 import com.illiad.troad.model.TroadStore
+import com.illiad.troad.service.Settings
 import com.illiad.troad.service.security.Cryptos
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -14,6 +15,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.*
@@ -25,7 +27,7 @@ class TokenManager private constructor(context: Context) {
     private val tStore by lazy { TroadStore(appContext) }
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private var interval: Long = 0L
+    private var currentIntervalMs: Long = 0L
     private var renewJob: Job? = null
 
     private val client = HttpClient {
@@ -37,75 +39,113 @@ class TokenManager private constructor(context: Context) {
         }
     }
 
-    suspend fun manageRenew(renew: Long) {
-        if (renew == interval) return
-        interval = renew
+    /**
+     * Accepts a stable snapshot of the active settings.
+     * Keeps background clocks aligned with user choice.
+     */
+    fun processSettingsUpdate(settings: Settings) {
+
+        // Rule: If autoRenew is set to NEVER (0 mins) or crypto isn't JWT, stop background timers immediately
+        if (settings.autoRenew == AutoRenew.NEVER || settings.crypto != Cryptos.JWT) {
+            if (renewJob?.isActive == true) {
+                Log.i(TM, "Auto-renew disabled or not in JWT mode. Stopping background loops.")
+                stopLifecycleTracking()
+            }
+            return
+        }
+
+        // Convert the enum minutes to milliseconds for the coroutine channel
+        val nextIntervalMs = settings.autoRenew!!.minutes * 60 * 1000L
+
+        // Optimization: Do nothing if the schedule matches what's already running
+        if (nextIntervalMs == currentIntervalMs) return
+
+        // user had input a new renew interval
+        currentIntervalMs = nextIntervalMs
         renewJob?.cancel()
 
-        if (interval > 0L && Cryptos.JWT == Utils.settings?.crypto) {
-            Log.i(TM, "Update automatic token renew")
-            renewJob = scope.launch {
-                while (isActive) {
-                    delay(interval)
-                    runCatching { doAutoRenew() }
+        Log.i(TM, "Starting auto token renewal loop. Interval: ${settings.autoRenew.label}")
+        renewJob = scope.launch {
+            while (isActive) {
+                delay(currentIntervalMs)
+                runCatching {
+                    executeAutoRenew(settings)
+                }.onFailure { e ->
+                    Log.e(TM, "Periodic out-of-band renewal cycle failed", e)
                 }
             }
         }
     }
 
-    private suspend fun postGenerate(request: TokenGenerateRequest): Data? {
-        val url = "https://${Utils.settings?.domain}:${Utils.settings?.port}/api/auth/token/generate"
+    private suspend fun postGenerate(settings: Settings, request: TokenGenerateRequest): Boolean {
+        val url = "https://${settings.domain}:${settings.port}/api/auth/token/generate"
 
         return try {
             val response = client.post(url) {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
-            val resBody = response.body<TokenResponse>()
-            resBody.data?.token?.let { tStore.saveJwt(it) }
-            resBody.data
+            if (response.status.isSuccess()) {
+                val resBody = response.body<TokenResponse>()
+                val freshToken = resBody.data?.token
+                if (!freshToken.isNullOrEmpty()) {
+                    tStore.saveJwt(freshToken) // Pure single point of persistence
+                    return true
+                }
+            }
+            false
         } catch (e: Exception) {
-            Log.e(TM, "Token post failed", e)
-            null
+            Log.e(TM, "Token HTTP payload transaction failed", e)
+            false
         }
     }
 
+    private suspend fun executeAutoRenew(snapshot: Settings) {
+        val jwt = snapshot.jwt
 
-    private suspend fun doAutoRenew() {
-        val jwt = Utils.settings?.jwt
         if (!jwt.isNullOrEmpty()) {
             val expiresAt = getExpireInstant(jwt)
             val now = Clock.System.now()
 
-            val currentSettings = Utils.settings
-            // Logic: if current time is before expiry but within the renewal window
-            if (now < expiresAt && (expiresAt - now).inWholeMinutes < (10 * interval / 60000)) {
-                val data = postGenerate(
+            // Calculate exact time remaining before the token dies
+            val remainingMinutes = (expiresAt - now).inWholeMinutes
+
+            // Look forward to the next loop tick, adding a 1-minute network transit safety buffer
+            val bufferMinutes = 1L
+            val criticalThresholdMinutes = snapshot.autoRenew!!.minutes + bufferMinutes
+
+            if (now < expiresAt && remainingMinutes < criticalThresholdMinutes) {
+                Log.i(TM, "Token expiring soon ($remainingMinutes mins left). Proactively refreshing via existing JWT...")
+                val success = postGenerate(
+                    snapshot,
                     TokenGenerateRequest(
                         currentToken = jwt,
-                        expirationMinutes = currentSettings?.duration?.minutes ?: 60
+                        expirationMinutes = snapshot.duration?.minutes ?: 60L
                     )
-                ) ?: throw Exception("Failed renewing token!")
-                data.token?.let { tStore.saveJwt(it) }
-                return
+                )
+                if (success) return
             }
         }
 
-        // Fallback to credentials
-        val currentSettings = Utils.settings
-        val user = currentSettings?.username
-        val pass = currentSettings?.password
+        // Out-Of-Band Fallback: Fetch credentials safely straight from DataStore using single-shot collection
+        Log.i(TM, "JWT refresh skipped or failed. Fetching credentials out-of-band from data store...")
+        val user = tStore.usernameFlow.firstOrNull()
+        val pass = tStore.passwordFlow.firstOrNull()
+
         if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
-            val data = postGenerate(
+            Log.d(TM, "Attempting token generation via saved user credentials...")
+            val success = postGenerate(
+                snapshot,
                 TokenGenerateRequest(
                     username = user,
                     password = pass,
-                    expirationMinutes = currentSettings.duration?.minutes ?: 60
+                    expirationMinutes = snapshot.duration?.minutes ?: 60L
                 )
-            ) ?: throw Exception("Failed renewing token!")
-            data.token?.let { tStore.saveJwt(it) }
+            )
+            if (!success) throw Exception("Credential authentication rejected by remote server.")
+        } else {
+            Log.w(TM, "Auto-renew execution abandoned: Data store credentials are blank.")
         }
-
     }
 
     @OptIn(ExperimentalEncodingApi::class)
@@ -114,20 +154,20 @@ class TokenManager private constructor(context: Context) {
             val parts = jwt.split(".")
             if (parts.size < 2) return Instant.DISTANT_PAST
 
-            // 1. Decode the payload (middle part of the JWT)
             val payload = Base64.decode(parts[1]).decodeToString()
             val json = Json.parseToJsonElement(payload).jsonObject
-
-            // 2. Extract standard "exp" (Seconds)
             val exp = json["exp"]?.jsonPrimitive?.longOrNull ?: return Instant.DISTANT_PAST
 
-            // 3. Convert Seconds to Instant
             Instant.fromEpochSeconds(exp)
         } catch (e: Exception) {
             Instant.DISTANT_PAST
         }
     }
 
+    fun stopLifecycleTracking() {
+        renewJob?.cancel()
+        currentIntervalMs = 0L
+    }
 
     companion object {
         @Volatile

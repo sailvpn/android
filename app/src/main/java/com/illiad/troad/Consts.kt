@@ -14,6 +14,7 @@ object Consts {
 
     const val ACTION_CONNECT = "qmt7e"
     const val ACTION_DISCONNECT = "dtpov"
+    const val ACTION_RESTART = "b5jku"
 
     const val NOTIFICATION_CHANNEL_ID = "TroadService"
     const val NOTIFICATION_CHANNEL_NAME = "Troad"

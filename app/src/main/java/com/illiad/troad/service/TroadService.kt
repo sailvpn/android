@@ -16,10 +16,7 @@ import androidx.core.app.NotificationCompat
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
-import com.illiad.troad.Consts.DNS1001
-import com.illiad.troad.Consts.DNS1111
-import com.illiad.troad.Consts.DNS8888
-import com.illiad.troad.Consts.DNS9999
+import com.illiad.troad.Consts.ACTION_RESTART
 import com.illiad.troad.Consts.EXTRA_IS_CONNECTED
 import com.illiad.troad.Consts.EXTRA_STATUS_MESSAGE
 import com.illiad.troad.Consts.MTU
@@ -31,11 +28,7 @@ import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.tunIp10_8_0_2
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
-import com.illiad.troad.Utils
-import com.illiad.troad.Utils.settings
-import com.illiad.troad.model.Duration
 import com.illiad.troad.model.TroadStore
-import com.illiad.troad.service.security.Cryptos
 import com.illiad.troad.service.security.HeaderEncoder
 import com.illiad.troad.service.security.client.TokenManager
 import kotlinx.coroutines.*
@@ -54,7 +47,14 @@ class TroadService : VpnService() {
     }
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + exceptionHandler)
     private val tStore by lazy { TroadStore(applicationContext) }
-    private lateinit var tokenManager: TokenManager
+
+    // 1. Lazy initialize the singleton TokenManager
+    private val tokenManager by lazy { TokenManager.getInstance(applicationContext) }
+
+    // Injected via Hilt/Koin or instantiated manually
+    private val settingsUseCase: SettingsUseCase = SettingsUseCase(SettingsRepoImp(tStore))
+    private var activeSettings: Settings? = null
+    private var header: String? = null
 
     @Volatile
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -62,11 +62,8 @@ class TroadService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        tokenManager = TokenManager.getInstance(applicationContext)
         createNotificationChannel()
         observeSettings()
-        observeAutorenew()
-        maintainHeader()
         Log.d(TS, "VPN Service Created.")
     }
 
@@ -74,6 +71,7 @@ class TroadService : VpnService() {
         when (intent?.action) {
             ACTION_CONNECT -> handleConnect()
             ACTION_DISCONNECT -> stopVpn()
+            ACTION_RESTART -> handleRestart() // Direct intent control route
         }
         return START_STICKY
     }
@@ -141,40 +139,14 @@ class TroadService : VpnService() {
     private fun runVpnStack(fd: Int) {
         Thread({
             try {
-                val currentSettings = settings ?: throw IllegalStateException("VPN Settings not loaded.")
-                
-                // VALIDATION BLOCK: Check for missing critical configuration
-                if (currentSettings.domain.isBlank()) {
-                    throw IllegalStateException("Server Domain is not configured.")
-                }
-                if (currentSettings.port == 0) {
-                    throw IllegalStateException("Server Port is not configured.")
-                }
-                if (currentSettings.cacert.isBlank()) {
-                    throw IllegalStateException("Security CA Certificate is missing.")
-                }
-                
-                // Crypto-specific validation
-                when (currentSettings.crypto) {
-                    Cryptos.JWT, Cryptos.JWT2 -> {
-                        if (currentSettings.jwt.isNullOrBlank()) {
-                            throw IllegalStateException("Authentication Token (JWT) is missing.")
-                        }
-                    }
-                    Cryptos.SHA_256 -> {
-                        // Assuming password/secret is used for SHA-256
-                        if (currentSettings.password.isNullOrBlank()) {
-                            throw IllegalStateException("Shared Secret/Password is not set.")
-                        }
-                    }
-                    else -> {}
-                }
-
-                val currentHeader = Utils.header ?: throw IllegalStateException("Security Header not initialized.")
+                val currentSettings =
+                    activeSettings ?: throw IllegalStateException("VPN Settings not loaded.")
+                val currentHeader =
+                    header ?: throw IllegalStateException("Security Header not initialized.")
 
                 // SOFTWARE FAIL CHECK: Validate file system write health immediately
                 val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
-                certFile.writeText(currentSettings.cacert)
+                currentSettings.cacert?.let { certFile.writeText(it) }
 
                 Log.i(TS, "Go Engine Thread Started")
 
@@ -253,7 +225,7 @@ class TroadService : VpnService() {
      */
     private fun handleSoftwareFailure(errorMessage: String) {
         Log.e(TS, "Software Failure: $errorMessage")
-        
+
         // 1. Broadcast the error to UI
         broadcastStatus(errorMessage, false)
 
@@ -261,7 +233,8 @@ class TroadService : VpnService() {
         vpnJob?.cancel()
         try {
             vpnInterface?.close()
-        } catch (e: Exception) { /* no-op */ }
+        } catch (e: Exception) { /* no-op */
+        }
         vpnInterface = null
 
         // 3. Update notification to error state
@@ -284,71 +257,103 @@ class TroadService : VpnService() {
     }
 
     private fun observeSettings() {
-
         serviceScope.launch {
-            // Combine all flows into a single configuration stream
-            combine<Any, Settings>(
-                tStore.serverDomainFlow,
-                tStore.sniFlow,
-                tStore.serverPortFlow,
-                tStore.caCertFlow,
-                tStore.selectedCryptoFlow,
-                tStore.tunIpFlow,
-                tStore.jwtFlow,
-                tStore.usernameFlow,
-                tStore.passwordFlow,
-                tStore.durationFlow
-            ) { v ->
-                // This data class acts as a snapshot of your current settings
-                Settings(
-                    domain = v[0] as String,
-                    sni = v[1] as String,
-                    port = v[2] as Int,
-                    cacert = v[3] as String,
-                    crypto = v[4] as Cryptos,
-                    jwt = v[6] as String?,
-                    username = v[7] as String?,
-                    password = v[8] as String?,
-                    duration = v[9] as Duration?
-                )
-            }.catch { e ->
-                Log.e(TS, "Settings flow failed", e)
-            }.collectLatest { s ->
-                // This block runs whenever ANY of the settings change
-                settings = s
-            }
-        }
-    }
-
-    private fun observeAutorenew() {
-        serviceScope.launch {
-            tStore.autoRenewFlow.collectLatest { renew ->
-                tokenManager.manageRenew(renew.minutes)
-            }
-
-        }
-    }
-
-    // create a new header whenever crypto, sharedsecret, or jwt changes
-    private fun maintainHeader() {
-        serviceScope.launch {
-            combine<Any, String?>(
-                tStore.selectedCryptoFlow,
-                tStore.sharedSecretFlow,
-                tStore.jwtFlow
-            ) { v ->
-                HeaderEncoder.encodeHeader(
-                    v[0] as Cryptos,
-                    v[1] as String,
-                    v[2] as String
-                )
-            }.collectLatest { header ->
-                // This block runs whenever ANY of the 3 settings change
-                if (header != null) {
-                    Utils.header = header
-                } else {
-                    Log.e(TS, "Failed to encode header: parameters might be missing.")
+            settingsUseCase()
+                .catch { e ->
+                    Log.e("VpnService", "Failed to resolve clean VPN snapshot", e)
+                    throw IllegalStateException("Failed to resolve clean VPN snapshot.")
                 }
+                .collectLatest { validSnapshot ->
+                    applySettings(validSnapshot)
+                }
+        }
+    }
+
+    private fun applySettings(newSettings: Settings) {
+        val previousSettings = activeSettings
+        if (newSettings == previousSettings) return // Optimization: Nothing changed
+
+        Log.d(
+            "VpnService",
+            "Applying fresh atomic config snapshot for domain: ${newSettings.domain}"
+        )
+
+        // 1. Keep background token auto-renew loops perfectly synced
+        tokenManager.processSettingsUpdate(newSettings)
+
+        if (newSettings.crypto != previousSettings?.crypto || newSettings.jwt != previousSettings.jwt || newSettings.secret != previousSettings.secret) {
+            Log.i(
+                "VpnService",
+                "Credential rotation detected (Crypto/JWT/Secret updated). Re-encoding connection headers."
+            )
+            // Generate the fresh binary/string connection token layout
+            header = HeaderEncoder.encodeHeader(
+                newSettings.crypto,
+                newSettings.secret,
+                newSettings.jwt
+            )
+
+        }
+
+        // Cache the snapshot after handling soft changes
+        activeSettings = newSettings
+
+
+        if (previousSettings == null ||
+            previousSettings.domain != newSettings.domain ||
+            previousSettings.port != newSettings.port ||
+            previousSettings.cacert != newSettings.cacert
+        ) {
+
+            handleRestart()
+        }
+    }
+
+
+    private fun handleRestart() {
+        Log.d(TS, "Executing atomic VPN tunnel hot-restart...")
+
+        // 1. Cancel the active reading/writing coroutine job immediately
+        vpnJob?.cancel()
+
+        // 2. Safely close the existing system TUN interface and file descriptor
+        try {
+            vpnInterface?.close()
+        } catch (e: Exception) {
+            Log.e(TS, "Error closing interface during restart", e)
+        }
+        vpnInterface = null
+
+        // 3. Update notification state so user knows a configuration shift is happening
+        updateNotification(
+            "Reconnecting...",
+            R.drawable.ic_vpn_on,
+            AndroidColor.parseColor("#0284C7")
+        )
+        broadcastStatus("Reconnecting", false)
+
+        // 4. Launch a brand new connection sequence exactly like handleConnect()
+        vpnJob = serviceScope.launch {
+            try {
+                val currentVpnInterface = establishVpnInterfaceReturn()
+                if (currentVpnInterface != null) {
+                    vpnInterface = currentVpnInterface
+
+                    // Pass the fresh file descriptor down to your native engine/stack
+                    runVpnStack(currentVpnInterface.fd)
+
+                    updateNotification(
+                        "VPN Active",
+                        R.drawable.ic_vpn_on,
+                        AndroidColor.parseColor("#FFE4A7")
+                    )
+                    broadcastStatus("Connected", true)
+                } else {
+                    handleConnectionFailure("Failed to re-allocate secure interface.")
+                }
+            } catch (e: Exception) {
+                Log.e(TS, "Fatal Internal Software Crash during restart", e)
+                terminateEntireAppSilently()
             }
         }
     }
@@ -410,7 +415,10 @@ class TroadService : VpnService() {
     }
 
     override fun onDestroy() {
-        Log.w(TS, "VPN Service is being permanently destroyed by the system wrapper. Cleaning resources...")
+        Log.w(
+            TS,
+            "VPN Service is being permanently destroyed by the system wrapper. Cleaning resources..."
+        )
 
         // 1. Instantly alert your frontend UI screens that the tunnel is dead
         // This forces the SmartStateSailLogo back to its default Disconnected state

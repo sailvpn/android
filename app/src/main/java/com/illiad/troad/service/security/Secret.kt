@@ -9,16 +9,16 @@ object Secret {
     // Use Kotlin's Random.Default (uses SecureRandom under the hood on JVM/Android)
     private val random = Random.Default
 
-    fun secret(crypto: Cryptos, secret: String, token: String): ByteArray? {
+    fun secret(crypto: Cryptos, secret: String?, token: String?): ByteArray? {
         return try {
             when (crypto) {
                 Cryptos.JWT, Cryptos.JWT2 -> {
-                    if (token.isEmpty()) return null
+                    if (token.isNullOrEmpty()) return null
                     token.encodeToByteArray()
                 }
 
                 Cryptos.SHA_256 -> {
-                    if (secret.isEmpty()) return null
+                    if (secret.isNullOrEmpty()) return null
                     sha256(secret.encodeToByteArray())
                 }
 
