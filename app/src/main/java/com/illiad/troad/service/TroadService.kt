@@ -1,7 +1,9 @@
 package com.illiad.troad.service
 
-import android.annotation.SuppressLint
-import android.app.*
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
 import android.os.Handler
@@ -13,10 +15,14 @@ import android.graphics.Color as AndroidColor
 // Import the modern Compose color system normally
 // import androidx.compose.ui.graphics.Color
 import androidx.core.app.NotificationCompat
-import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.lifecycleScope
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
 import com.illiad.troad.Consts.ACTION_RESTART
+import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.EXTRA_IS_CONNECTED
 import com.illiad.troad.Consts.EXTRA_STATUS_MESSAGE
 import com.illiad.troad.Consts.MTU
@@ -28,50 +34,42 @@ import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.tunIp10_8_0_2
 import com.illiad.troad.MainActivity
 import com.illiad.troad.R
-import com.illiad.troad.model.TroadStore
-import com.illiad.troad.service.security.HeaderEncoder
-import com.illiad.troad.service.security.client.TokenManager
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import java.io.IOException
-import troadengine.Troadengine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
-@SuppressLint("VpnServicePolicy")
-class TroadService : VpnService() {
+// 1. CHANGE INHERITANCE: Must be VpnService, manually providing LifecycleOwner
+class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceController {
 
-    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
-        Log.e(TS, "Unhandled exception in TroadService scope", throwable)
-        // Instead of silent termination, we handle it as a software failure and stop the service gracefully.
-        handleSoftwareFailure("Unexpected background error: ${throwable.localizedMessage}")
-    }
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + exceptionHandler)
-    private val tStore by lazy { TroadStore(applicationContext) }
+    // 2. MANUALLY IMPLEMENT LIFECYCLE CONTAINER: Provides 'lifecycleScope' safely
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
 
-    // 1. Lazy initialize the singleton TokenManager
-    private val tokenManager by lazy { TokenManager.getInstance(applicationContext) }
-
-    // Injected via Hilt/Koin or instantiated manually
-    private val settingsUseCase: SettingsUseCase = SettingsUseCase(SettingsRepoImp(tStore))
-    private var activeSettings: Settings? = null
-    private var header: String? = null
-
-    @Volatile
-    private var vpnInterface: ParcelFileDescriptor? = null
+    private val butler by lazy { Butler.getInstance(applicationContext) }
     private var vpnJob: Job? = null
+    private var vpnInterface: ParcelFileDescriptor? = null
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        observeSettings()
-        Log.d(TS, "VPN Service Created.")
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+
+        // Bind your clean Butler orchestration component
+        butler.startMonitoring(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+
         when (intent?.action) {
             ACTION_CONNECT -> handleConnect()
             ACTION_DISCONNECT -> stopVpn()
-            ACTION_RESTART -> handleRestart() // Direct intent control route
+            ACTION_RESTART -> {
+                val currentHeader = butler.header ?: byteArrayOf()
+                requestHardRestart(currentHeader)
+            }
         }
         return START_STICKY
     }
@@ -87,18 +85,25 @@ class TroadService : VpnService() {
             )
         )
 
-        vpnJob = serviceScope.launch {
+        vpnJob = lifecycleScope.launch {
             try {
+                // Now perfectly legal to call because this class IS an official VpnService
                 val currentVpnInterface = establishVpnInterfaceReturn()
                 if (currentVpnInterface != null) {
                     vpnInterface = currentVpnInterface
-                    runVpnStack(currentVpnInterface.fd)
-                    updateNotification(
-                        "VPN Active",
-                        R.drawable.ic_vpn_on,
-                        AndroidColor.parseColor("#FFE4A7")
-                    )
-                    broadcastStatus("Connected", true)
+                    // one-shot pre-flight effort to ensure header
+                    if (butler.prepareTunnelCredentials()) {
+                        runVpnStack(currentVpnInterface.fd)
+                        updateNotification(
+                            "VPN Active",
+                            R.drawable.ic_vpn_on,
+                            AndroidColor.parseColor("#FFE4A7")
+                        )
+                        broadcastStatus("Connected", true)
+                    } else {
+                        closeInterfaceQuietly(currentVpnInterface)
+                        vpnInterface = null
+                    }
                 } else {
                     // CONNECTION FAIL: System couldn't establish the interface (e.g., restricted profile)
                     handleConnectionFailure("Failed to allocate secure interface.")
@@ -111,17 +116,36 @@ class TroadService : VpnService() {
         }
     }
 
+    override fun requestHardRestart(bootHeader: ByteArray) {
+        Log.d(TS, "Executing atomic VPN tunnel interface cycle...")
+        vpnJob?.cancel()
+        closeInterfaceQuietly(vpnInterface)
+        vpnInterface = null
+
+        vpnJob = lifecycleScope.launch {
+            val currentInterface = establishVpnInterfaceReturn()
+            if (currentInterface != null) {
+                vpnInterface = currentInterface
+                runVpnStack(currentInterface.fd)
+                broadcastStatus("Connected", true)
+            }
+        }
+    }
+
+    override fun onPreFlightAuthenticationFailed(reason: String) {
+        handleConnectionFailure(reason)
+    }
+
     private fun establishVpnInterfaceReturn(): ParcelFileDescriptor? {
         return try {
+            // Evaluates perfectly against this instance context now!
             Builder()
                 .setSession(getString(R.string.app_name))
                 .addAddress(tunIp10_8_0_2, 24)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer("223.5.5.5")
                 .addDnsServer("223.6.6.6")
-                //.addDnsServer(DNS8888)
-                //.addDnsServer(DNS1001)
-                .addDisallowedApplication(packageName)
+                .addDisallowedApplication(packageName) // Bypasses loopbacks securely
                 .setMtu(MTU)
                 .establish()
         } catch (e: Exception) {
@@ -140,9 +164,8 @@ class TroadService : VpnService() {
         Thread({
             try {
                 val currentSettings =
-                    activeSettings ?: throw IllegalStateException("VPN Settings not loaded.")
-                val currentHeader =
-                    header ?: throw IllegalStateException("Security Header not initialized.")
+                    butler.activeSettings ?: throw IllegalStateException("VPN Settings not loaded.")
+                val currentHeader = butler.header?: throw IllegalStateException("no valid header.")
 
                 // SOFTWARE FAIL CHECK: Validate file system write health immediately
                 val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
@@ -177,20 +200,88 @@ class TroadService : VpnService() {
     }
 
     private fun stopVpn() {
-        broadcastStatus("Disconnected", false)
+        Log.d(TS, "Tearing down system VPN routing layouts...")
+        butler.stopMonitoring()
+
+        try { Troadengine.stopTroad() } catch (e: Exception) {}
         vpnJob?.cancel()
 
-        serviceScope.launch(Dispatchers.Main) {
-            try {
-                vpnInterface?.close()
-            } catch (e: IOException) {
-                Log.e(TS, "Close error", e)
-            } finally {
-                vpnInterface = null
+        lifecycleScope.launch(Dispatchers.IO) {
+            closeInterfaceQuietly(vpnInterface)
+            vpnInterface = null
+
+            withContext(Dispatchers.Main) {
+                broadcastStatus("Disconnected", false)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
+    }
+
+    private fun closeInterfaceQuietly(pfd: ParcelFileDescriptor?) {
+        try { pfd?.close() } catch (e: IOException) { Log.e(TS, "FD close error", e) }
+    }
+
+    override fun onDestroy() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        butler.stopMonitoring()
+        super.onDestroy()
+    }
+
+    private fun broadcastStatus(message: String, isConnected: Boolean) {
+        sendBroadcast(Intent(ACTION_VPN_STATUS_BROADCAST).apply {
+            putExtra(EXTRA_STATUS_MESSAGE, message)
+            putExtra(EXTRA_IS_CONNECTED, isConnected)
+            setPackage(packageName)
+        })
+    }
+
+    private fun updateNotification(text: String, iconResId: Int, statusColor: Int) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm?.notify(NOTIFICATION_ID, createNotification(text, iconResId, statusColor))
+    }
+
+    /**
+     * Generates an optimized, low-overhead system notification layout profile.
+     *
+     * @param text The status description message string to write out inside the panel drawer.
+     * @param iconResId The target asset file reference (Offline layout line art vs Active bold fill).
+     * @param statusColor The accent color to apply to the notification UI.
+     */
+    private fun createNotification(text: String, iconResId: Int, statusColor: Int): Notification {
+        val pendingIntent = { action: String, code: Int ->
+            val intent = Intent(
+                this,
+                if (action == ACTION_DISCONNECT) TroadService::class.java else MainActivity::class.java
+            )
+            intent.action = action
+            PendingIntent.getService(this, code, intent, PendingIntent.FLAG_IMMUTABLE)
+        }
+
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            // Set both small and large to the identical token asset id
+            // This ensures the status bar line and expanded tray panel sync status identically
+            .setSmallIcon(iconResId)
+            .setColor(statusColor)
+            .setColorized(true)
+            .setContentTitle("Troad VPN")
+            .setContentText(text)
+            .setOngoing(true)
+            .addAction(
+                R.drawable.ic_vpn_off,
+                "Disconnect",
+                pendingIntent(ACTION_DISCONNECT, PENDING_INTENT_REQUEST_CODE_DISCONNECT)
+            )
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            NOTIFICATION_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_LOW
+        )
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
     }
 
     /**
@@ -254,197 +345,6 @@ class TroadService : VpnService() {
      */
     private fun terminateEntireAppSilently() {
         handleSoftwareFailure("Internal Application Error")
-    }
-
-    private fun observeSettings() {
-        serviceScope.launch {
-            settingsUseCase()
-                .catch { e ->
-                    Log.e("VpnService", "Failed to resolve clean VPN snapshot", e)
-                    throw IllegalStateException("Failed to resolve clean VPN snapshot.")
-                }
-                .collectLatest { validSnapshot ->
-                    applySettings(validSnapshot)
-                }
-        }
-    }
-
-    private fun applySettings(newSettings: Settings) {
-        val previousSettings = activeSettings
-        if (newSettings == previousSettings) return // Optimization: Nothing changed
-
-        Log.d(
-            "VpnService",
-            "Applying fresh atomic config snapshot for domain: ${newSettings.domain}"
-        )
-
-        // 1. Keep background token auto-renew loops perfectly synced
-        tokenManager.processSettingsUpdate(newSettings)
-
-        if (newSettings.crypto != previousSettings?.crypto || newSettings.jwt != previousSettings.jwt || newSettings.secret != previousSettings.secret) {
-            Log.i(
-                "VpnService",
-                "Credential rotation detected (Crypto/JWT/Secret updated). Re-encoding connection headers."
-            )
-            // Generate the fresh binary/string connection token layout
-            header = HeaderEncoder.encodeHeader(
-                newSettings.crypto,
-                newSettings.secret,
-                newSettings.jwt
-            )
-
-        }
-
-        // Cache the snapshot after handling soft changes
-        activeSettings = newSettings
-
-
-        if (previousSettings == null ||
-            previousSettings.domain != newSettings.domain ||
-            previousSettings.port != newSettings.port ||
-            previousSettings.cacert != newSettings.cacert
-        ) {
-
-            handleRestart()
-        }
-    }
-
-
-    private fun handleRestart() {
-        Log.d(TS, "Executing atomic VPN tunnel hot-restart...")
-
-        // 1. Cancel the active reading/writing coroutine job immediately
-        vpnJob?.cancel()
-
-        // 2. Safely close the existing system TUN interface and file descriptor
-        try {
-            vpnInterface?.close()
-        } catch (e: Exception) {
-            Log.e(TS, "Error closing interface during restart", e)
-        }
-        vpnInterface = null
-
-        // 3. Update notification state so user knows a configuration shift is happening
-        updateNotification(
-            "Reconnecting...",
-            R.drawable.ic_vpn_on,
-            AndroidColor.parseColor("#0284C7")
-        )
-        broadcastStatus("Reconnecting", false)
-
-        // 4. Launch a brand new connection sequence exactly like handleConnect()
-        vpnJob = serviceScope.launch {
-            try {
-                val currentVpnInterface = establishVpnInterfaceReturn()
-                if (currentVpnInterface != null) {
-                    vpnInterface = currentVpnInterface
-
-                    // Pass the fresh file descriptor down to your native engine/stack
-                    runVpnStack(currentVpnInterface.fd)
-
-                    updateNotification(
-                        "VPN Active",
-                        R.drawable.ic_vpn_on,
-                        AndroidColor.parseColor("#FFE4A7")
-                    )
-                    broadcastStatus("Connected", true)
-                } else {
-                    handleConnectionFailure("Failed to re-allocate secure interface.")
-                }
-            } catch (e: Exception) {
-                Log.e(TS, "Fatal Internal Software Crash during restart", e)
-                terminateEntireAppSilently()
-            }
-        }
-    }
-
-    private fun broadcastStatus(message: String, isConnected: Boolean) {
-        sendBroadcast(Intent(ACTION_VPN_STATUS_BROADCAST).apply {
-            putExtra(EXTRA_STATUS_MESSAGE, message)
-            putExtra(EXTRA_IS_CONNECTED, isConnected)
-            setPackage(packageName)
-        })
-    }
-
-    private fun updateNotification(text: String, iconResId: Int, statusColor: Int) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm?.notify(NOTIFICATION_ID, createNotification(text, iconResId, statusColor))
-    }
-
-    /**
-     * Generates an optimized, low-overhead system notification layout profile.
-     *
-     * @param text The status description message string to write out inside the panel drawer.
-     * @param iconResId The target asset file reference (Offline layout line art vs Active bold fill).
-     * @param statusColor The accent color to apply to the notification UI.
-     */
-    private fun createNotification(text: String, iconResId: Int, statusColor: Int): Notification {
-        val pendingIntent = { action: String, code: Int ->
-            val intent = Intent(
-                this,
-                if (action == ACTION_DISCONNECT) TroadService::class.java else MainActivity::class.java
-            )
-            intent.action = action
-            PendingIntent.getService(this, code, intent, PendingIntent.FLAG_IMMUTABLE)
-        }
-
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            // Set both small and large to the identical token asset id
-            // This ensures the status bar line and expanded tray panel sync status identically
-            .setSmallIcon(iconResId)
-            .setColor(statusColor)
-            .setColorized(true)
-            .setContentTitle("Troad VPN")
-            .setContentText(text)
-            .setOngoing(true)
-            .addAction(
-                R.drawable.ic_vpn_off,
-                "Disconnect",
-                pendingIntent(ACTION_DISCONNECT, PENDING_INTENT_REQUEST_CODE_DISCONNECT)
-            )
-            .build()
-    }
-
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            NOTIFICATION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_LOW
-        )
-        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
-    }
-
-    override fun onDestroy() {
-        Log.w(
-            TS,
-            "VPN Service is being permanently destroyed by the system wrapper. Cleaning resources..."
-        )
-
-        // 1. Instantly alert your frontend UI screens that the tunnel is dead
-        // This forces the SmartStateSailLogo back to its default Disconnected state
-        try {
-            broadcastStatus("Disconnected", false)
-        } catch (e: Exception) {
-            Log.e(TS, "Failed to broadcast final destruction exit loop status", e)
-        }
-
-        // 2. Critical Network Safety Release: Tear down the interface channel
-        // If you skip this, the user's phone will lose all internet connectivity after the app exits!
-        try {
-            vpnInterface?.close()
-            Log.i(TS, "Secure VPN tunnel interface file descriptor closed successfully.")
-        } catch (e: Exception) {
-            Log.e(TS, "Error forcing final close on VPN interface", e)
-        } finally {
-            vpnInterface = null
-        }
-
-        // 3. Force cancel your long-running Go Engine tasks and Coroutine workers
-        vpnJob?.cancel()
-        serviceScope.cancel()
-
-        // 4. Clean exit via parent framework call
-        super.onDestroy()
     }
 
 }

@@ -40,6 +40,77 @@ class TokenManager private constructor(context: Context) {
     }
 
     /**
+     * Synchronously ensures that a valid token exists in storage.
+     * If the current token is missing or expired, it forces an out-of-band network refresh.
+     * Returns true if a valid token is ready, false if authentication failed.
+     */
+    suspend fun ensureValidToken(snapshot: Settings): Boolean {
+        // 1. CRITICAL VALIDATION CHECK:
+        // If the snapshot itself is invalid (missing domain, bad port, etc.),
+        // abort early to prevent the VPN engine from crashing.
+        if (!snapshot.isValid) {
+            Log.w(TM, "Pre-flight check aborted: Settings snapshot failed validation rules.")
+            return false
+        }
+
+        // 2. PROTOCOL TYPE ROUTING:
+        // If the crypto mode doesn't use JWT, it's immediately safe to proceed to socket creation
+        if (snapshot.crypto != Cryptos.JWT) return true
+
+        // 3. CACHED TOKEN VALIDATION:
+        val jwt = snapshot.jwt
+        if (!jwt.isNullOrEmpty()) {
+            val expiresAt = getExpireInstant(jwt)
+            val now = Clock.System.now()
+
+            // If the token is still alive and has a safe cushion (> 1 minute left), proceed instantly
+            if (now < expiresAt && (expiresAt - now).inWholeMinutes > 1L) {
+                Log.d(TM, "Pre-flight check passed: Token is still valid.")
+                return true
+            }
+        }
+
+        // 4. FORCED OUT-OF-BAND REFRESH TRAJECTORY:
+        // If we reach here, the token is either null, empty, or expired.
+        Log.i(
+            TM,
+            "Pre-flight check failed: Token missing or expired. Forcing out-of-band renewal..."
+        )
+
+        // Attempt token-swap refresh using the current expired JWT if present
+        if (!jwt.isNullOrEmpty()) {
+            val success = postGenerate(
+                snapshot,
+                TokenGenerateRequest(
+                    currentToken = jwt,
+                    expirationMinutes = snapshot.duration?.minutes ?: 60L
+                )
+            )
+            if (success) return true
+        }
+
+        // 5. SECURE DATASTORE FALLBACK:
+        // If token refresh fails, look up the raw user credentials out-of-band from the DataStore
+        val user = tStore.usernameFlow.firstOrNull()
+        val pass = tStore.passwordFlow.firstOrNull()
+
+        if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
+            Log.d(TM, "Forced renewal falling back to saved user credentials...")
+            return postGenerate(
+                snapshot,
+                TokenGenerateRequest(
+                    username = user,
+                    password = pass,
+                    expirationMinutes = snapshot.duration?.minutes ?: 60L
+                )
+            )
+        }
+
+        Log.w(TM, "Forced pre-flight renewal failed: No valid credentials or tokens found.")
+        return false
+    }
+
+    /**
      * Accepts a stable snapshot of the active settings.
      * Keeps background clocks aligned with user choice.
      */
@@ -77,7 +148,7 @@ class TokenManager private constructor(context: Context) {
         }
     }
 
-    private suspend fun postGenerate(settings: Settings, request: TokenGenerateRequest): Boolean {
+    suspend fun postGenerate(settings: Settings, request: TokenGenerateRequest): Boolean {
         val url = "https://${settings.domain}:${settings.port}/api/auth/token/generate"
 
         return try {
@@ -115,7 +186,10 @@ class TokenManager private constructor(context: Context) {
             val criticalThresholdMinutes = snapshot.autoRenew!!.minutes + bufferMinutes
 
             if (now < expiresAt && remainingMinutes < criticalThresholdMinutes) {
-                Log.i(TM, "Token expiring soon ($remainingMinutes mins left). Proactively refreshing via existing JWT...")
+                Log.i(
+                    TM,
+                    "Token expiring soon ($remainingMinutes mins left). Proactively refreshing via existing JWT..."
+                )
                 val success = postGenerate(
                     snapshot,
                     TokenGenerateRequest(
@@ -128,7 +202,10 @@ class TokenManager private constructor(context: Context) {
         }
 
         // Out-Of-Band Fallback: Fetch credentials safely straight from DataStore using single-shot collection
-        Log.i(TM, "JWT refresh skipped or failed. Fetching credentials out-of-band from data store...")
+        Log.i(
+            TM,
+            "JWT refresh skipped or failed. Fetching credentials out-of-band from data store..."
+        )
         val user = tStore.usernameFlow.firstOrNull()
         val pass = tStore.passwordFlow.firstOrNull()
 
@@ -149,7 +226,7 @@ class TokenManager private constructor(context: Context) {
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    private fun getExpireInstant(jwt: String): Instant {
+    fun getExpireInstant(jwt: String): Instant {
         return try {
             val parts = jwt.split(".")
             if (parts.size < 2) return Instant.DISTANT_PAST
