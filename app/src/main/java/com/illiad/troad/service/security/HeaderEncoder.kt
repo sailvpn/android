@@ -1,8 +1,5 @@
 package com.illiad.troad.service.security
 
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-
 /**
  *
  * Pure Kotlin HeaderEncoder.
@@ -12,11 +9,10 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * if the encryption returns a fixed-length signature, the length field contains the whole length(length + cryptoType + signature + offset CRLF).
  * if the encryption returns a variable-length signature, the length field contain the length of the signature only(length + cryptoType + signature).
  */
-@OptIn(ExperimentalEncodingApi::class)
 object HeaderEncoder {
 
     private val CRLF = byteArrayOf(0x0D, 0x0A)
-    fun encodeHeader(crypto: Cryptos, secret: String?, token: String?): String? {
+    fun encode(crypto: Cryptos, secret: String?, token: String?): ByteArray? {
         // 1. Get secrets from your implementation
         val secretBytes = Secret.secret(crypto, secret, token) ?: return null
         val offset = Secret.offset()
@@ -34,28 +30,27 @@ object HeaderEncoder {
         // 3. Build the Raw Byte Array
         // Total size = 2 (length) + 1 (type) + signature + offset + 2 (CRLF)
         val totalSize = 2 + 1 + secretBytes.size + offset.size + 2
-        val rawHeader = ByteArray(totalSize)
+        val header = ByteArray(totalSize)
 
         var pos = 0
         // Write Short (Big Endian)
-        rawHeader[pos++] = (headerLengthField shr 8).toByte()
-        rawHeader[pos++] = (headerLengthField and 0xFF).toByte()
+        header[pos++] = (headerLengthField shr 8).toByte()
+        header[pos++] = (headerLengthField and 0xFF).toByte()
 
         // Write Crypto Type
-        rawHeader[pos++] = crypto.code.toByte()
+        header[pos++] = crypto.code.toByte()
 
         // Write Signature (Secret)
-        secretBytes.copyInto(rawHeader, destinationOffset = pos)
+        secretBytes.copyInto(header, destinationOffset = pos)
         pos += secretBytes.size
 
         // Write Offset
-        offset.copyInto(rawHeader, destinationOffset = pos)
+        offset.copyInto(header, destinationOffset = pos)
         pos += offset.size
 
         // Write CRLF
-        CRLF.copyInto(rawHeader, destinationOffset = pos)
+        CRLF.copyInto(header, destinationOffset = pos)
 
-        // 4. Encode to URL-Safe Base64 (No Padding)
-        return Base64.UrlSafe.encode(rawHeader).trimEnd('=')
+        return header
     }
 }
