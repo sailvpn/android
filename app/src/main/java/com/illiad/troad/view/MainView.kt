@@ -1,6 +1,5 @@
 package com.illiad.troad.view
 
-// Explicit functional imports for your custom dashboard components
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,6 +35,7 @@ import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.components.SmartStateSailLogo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.graphics.Color
 import com.illiad.troad.ui.theme.troadGradients
 
@@ -163,6 +163,33 @@ fun MainView(viewModel: MainViewModel) {
         }
     }
 }
+
+@Composable
+fun SpeedMetricsDashboard(viewModel: MainViewModel) {
+    val activeState = viewModel.vpnState
+    val metrics = viewModel.speedMetrics // Reads the optimized SpeedMetrics object
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(activeState.sailBgColor) // Stable canvas background color
+            .padding(16.dp)
+    ) {
+        Text(text = activeState.statusLabel, style = MaterialTheme.typography.headlineMedium)
+
+        if (viewModel.isProxyRunning) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Short, punchy property queries map cleanly to screen labels
+                Text(text = "Down: ${metrics.down}", style = MaterialTheme.typography.bodyLarge)
+                Text(text = "Up: ${metrics.up}", style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
 
 
 
