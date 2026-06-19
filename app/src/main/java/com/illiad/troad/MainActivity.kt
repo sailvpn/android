@@ -18,11 +18,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
+import com.illiad.troad.Consts.EXTRA_MSG
+import com.illiad.troad.Consts.EXTRA_STATE
 import com.illiad.troad.model.Screen
 import com.illiad.troad.ui.theme.TroadTheme // Your app's theme
 import com.illiad.troad.model.SettingsViewModel
 import com.illiad.troad.model.MainViewModel
 import com.illiad.troad.model.SettingsViewModelFactory
+import com.illiad.troad.model.VpnState
 import com.illiad.troad.view.MainView
 import com.illiad.troad.view.SettingsView
 
@@ -79,14 +82,23 @@ class MainActivity : ComponentActivity() {
     private val vpnStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_VPN_STATUS_BROADCAST) {
-                val message = intent.getStringExtra(Consts.EXTRA_STATUS_MESSAGE)
-                val isConnected = intent.getBooleanExtra(Consts.EXTRA_IS_CONNECTED, false)
+                // 1. Extract the raw string name token safely
+                val stateName = intent.getStringExtra(EXTRA_STATE) ?: VpnState.DISCONNECTED.name
+                val message = intent.getStringExtra(EXTRA_MSG)
 
-                // 3. Update the lightweight ViewModel instead of the heavy one
-                mainViewModel.updateVpnStatus(isConnected, message)
+                // 2. Safely parse it back into the strict compile-time Enum structure
+                val state = try {
+                    VpnState.valueOf(stateName)
+                } catch (e: Exception) {
+                    VpnState.DISCONNECTED // Fallback safety default
+                }
+
+                // 3. Forward the parameters to your MainViewModel to drive Compose layouts
+                mainViewModel.updateVpnStatus(state, message)
             }
         }
     }
+
 
     override fun onResume() {
         super.onResume()
