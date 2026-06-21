@@ -63,7 +63,7 @@ class Butler private constructor(context: Context) {
         val previousSettings = activeSettings
 
         // 1. Sync out-of-band TokenManager refresh intervals continuously
-        tokenManager.processSettingsUpdate(newSettings)
+        tokenManager.processSettingsUpdate(settingsUseCase)
 
         // 2. Identify if structural properties shifted
         val needsHardRestart = previousSettings == null ||

@@ -3,15 +3,16 @@ package com.illiad.troad.service.security.client
 import android.content.Context
 import android.util.Log
 import com.illiad.troad.Consts.TM
-import com.illiad.troad.model.AutoRenew
 import com.illiad.troad.service.Settings
 import com.illiad.troad.model.TroadStore
+import com.illiad.troad.service.SettingsUseCase
 import com.illiad.troad.service.security.Cryptos
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.*
@@ -27,113 +28,150 @@ class TokenManager private constructor(context: Context) {
     private val clientFactory: HttpClientFactory = createPlatformHttpClientFactory()
 
     /**
-     * Accepts a stable snapshot of the active settings.
-     * Manages the lifecycle of the one-time alarm loop.
+     * Initializes the autonomous background token refresh loop.
+     * Runs continuously, monitoring data stream parameters natively without external resets.
      */
-    fun processSettingsUpdate(settings: Settings) {
-        // 1. If autoRenew is NEVER (0 mins) or crypto isn't JWT, cancel any pending alarm chains instantly
-        if (settings.autoRenew == AutoRenew.NEVER || settings.crypto != Cryptos.JWT) {
-            if (renewJob?.isActive == true) {
-                Log.i(TM, "Auto-renew disabled or not in JWT mode. Stopping background loops.")
-                stopLifecycleTracking()
-            }
-            return
-        }
+    fun processSettingsUpdate(settingsUseCase: SettingsUseCase) {
+        // 1. If an active loop is already running, do absolutely nothing.
+        // The running while(true) loop will catch updates internally on its own timeline!
+        if (renewJob?.isActive == true) return
 
-        // 2. DEADLOCK FIX: We do NOT optimize or early-return based on interval equality anymore!
-        // Every settings update cancels the old chain and schedules a fresh one-time check immediately.
-        renewJob?.cancel()
-
-        Log.i(TM, "Scheduling initial one-time token refresh validation alarm...")
+        Log.i(TM, "Spawning autonomous, flat self-scheduling background renewal alarm chain...")
         renewJob = scope.launch {
-            runOneTimeAlarmChain(settings)
+            runFlatAlarmLoop(settingsUseCase)
         }
     }
 
     /**
-     * Recursive-style coroutine loop that handles single-shot triggers sequentially.
+     * RESPONSIVE AUTONOMOUS ALARM ENGINE:
+     * Runs indefinitely, using scoped cancellations inside the loop to adapt to timeline parameters instantly.
      */
-    private suspend fun CoroutineScope.runOneTimeAlarmChain(settings: Settings) {
-        if (!isActive) return
+    private suspend fun runFlatAlarmLoop(settingsUseCase: SettingsUseCase) {
+        while (true) {
+            // A. SINGLE-SHOT DATA CAPTURE: Check baseline configuration variables straight from storage
+            val currentSettings = try {
+                settingsUseCase().firstOrNull()
+            } catch (e: Exception) {
+                Log.e(TM, "Alarm loop failed reading configuration from storage", e)
+                delay(10000)
+                continue
+            }
 
-        // 1. Calculate the delay dynamically before executing the current pass
-        val intervalMinutes = settings.autoRenew?.minutes ?: 5L
-        val intervalMs = intervalMinutes * 60 * 1000L
+            // B. PROTOCOL INTERCEPTOR GATEWAYS: Exit loop cleanly if disabled
+            val intervalMinutes = currentSettings?.autoRenew?.minutes ?: 0L
+            if (intervalMinutes == 0L || currentSettings?.crypto != Cryptos.JWT) {
+                Log.i(
+                    TM,
+                    "Auto-renew disabled or non-JWT protocol detected. Exiting alarm loop cleanly."
+                )
+                break
+            }
 
-        // 2. Sleep for this single-shot window
-        delay(intervalMs)
+            val intervalMs = intervalMinutes * 60 * 1000L
+            Log.d(
+                TM,
+                "Scheduling smart-sleep window. Target: $intervalMinutes minutes ($intervalMs ms)."
+            )
 
-        Log.d(TM, "One-time refresh alarm triggered. Evaluating live token lifecycle...")
+            var executionSettings = currentSettings
 
-        // 3. Process the refresh transaction safely
-        runCatching {
-            executeAutoRenew(settings)
-        }.onFailure { e ->
-            Log.e(TM, "One-time token renewal execution failed", e)
-        }
+            // C. INTERACTING INTERCEPTOR WRAPPER:
+            // We place the try-catch INSIDE the while(true) loop, wrapped precisely around the timer block.
+            try {
+                withTimeoutOrNull(intervalMs) {
+                    settingsUseCase().collectLatest { liveUpdate ->
+                        if (liveUpdate.autoRenew?.minutes != intervalMinutes || liveUpdate.crypto != currentSettings.crypto) {
+                            Log.i(
+                                TM,
+                                "Critical scheduling parameter shift detected during sleep cycle. Recalibrating timeline instantly..."
+                            )
 
-        // 4. SELF-SCHEDULING CHAIN LINK:
-        // Instead of a periodic cycle, we read the freshest storage snapshot and schedule
-        // the NEXT one-time alarm link only after the current processing completes.
-        if (isActive) {
-            Log.d(TM, "Scheduling next one-time alarm trigger link...")
-            runOneTimeAlarmChain(settings)
+                            // Break out of the local withTimeoutOrNull block immediately.
+                            // This unblocks the sleep timer without killing your main outer background thread!
+                            throw CancellationException("Timeline shifted")
+                        } else {
+                            // Maintain freshest tokens or duration properties while sleeping
+                            executionSettings = liveUpdate
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                // D. RE-ALIGNMENT BRIDGE:
+                // Check if the parent coroutine scope itself is being cancelled (e.g., user clicked disconnect).
+                // If the whole service is shutting down, we must respect that and re-throw the exception to exit.
+                if (!currentCoroutineContext().isActive) {
+                    throw e
+                }
+
+                // Otherwise, it was just a local setting adjustment. Log it, let the catch block clear,
+                // and the while(true) loop will natively advance straight back to step A to apply the updates!
+                Log.d(
+                    TM,
+                    "Local sleep container unblocked successfully. Re-cycling loop for fresh parameter allocation."
+                )
+                continue
+            }
+
+            Log.d(TM, "Alarm link triggered normally. Processing out-of-band renewal...")
+
+            // E. EXECUTE THE TRANSACTION: Bubble network exceptions safely to protect loop framework continuity
+            try {
+                executeAutoRenew(executionSettings)
+            } catch (e: Exception) {
+                Log.e(TM, "Background token renewal pass failed. Safe-continuing loop track.", e)
+            }
         }
     }
+
 
     /**
      * Centralized execution logic for updating an active token lifecycle.
      */
     private suspend fun executeAutoRenew(snapshot: Settings) {
-        val jwt = snapshot.jwt
-        if (!jwt.isNullOrEmpty()) {
-            val expiresAt = getExpireInstant(jwt)
-            val now = Clock.System.now()
-            val remainingMinutes = (expiresAt - now).inWholeMinutes
 
-            // Safety margin lookup window matches your forward loop interval tick
-            val intervalMinutes = snapshot.autoRenew?.minutes ?: 5L
-            val bufferMinutes = 1L
-            val criticalThresholdMinutes = intervalMinutes + bufferMinutes
+        try {
+            val jwt = snapshot.jwt
 
             // Check if the token is entering its critical expiration window
-            if (now < expiresAt && remainingMinutes < criticalThresholdMinutes) {
+            if ((getExpireInstant(jwt) - Clock.System.now()).inWholeMinutes < (snapshot.autoRenew?.minutes
+                    ?: 5L) * 5
+            ) {
                 Log.i(
                     TM,
-                    "Token entering critical expiration window ($remainingMinutes mins left). Proactively refreshing..."
+                    "Token entering critical expiration window. Proactively refreshing..."
                 )
-                val success = postGenerate(
-                    snapshot,
-                    TokenGenerateRequest(
-                        currentToken = jwt,
-                        expirationMinutes = snapshot.duration?.minutes ?: 60L
+
+                if (postGenerate(
+                        snapshot,
+                        TokenGenerateRequest(
+                            currentToken = jwt,
+                            expirationMinutes = snapshot.duration?.minutes ?: 60L
+                        )
                     )
-                )
-                if (success) return
+                ) {
+                    Log.d(TM, "refresh token...")
+                } else {
+                    val user = tStore.usernameFlow.firstOrNull()
+                    val pass = tStore.passwordFlow.firstOrNull()
+                    if (user.isNullOrEmpty() && !pass.isNullOrEmpty() && postGenerate(
+                            snapshot,
+                            TokenGenerateRequest(
+                                username = user,
+                                password = pass,
+                                expirationMinutes = snapshot.duration?.minutes ?: 60L
+                            )
+                        )
+                    ) {
+                        Log.d(TM, "refresh token by user credential...")
+
+                    } else {
+                        Log.d(TM, "refreshing token failed...")
+                    }
+                }
             }
+        } catch (e: Exception) {
+            throw Exception(TM, e)
         }
-
-        // Trigger full token acquisition fallback if token refresh fails or is absent
-        val fallbackSuccess = tryToAcquireToken(snapshot)
-        if (!fallbackSuccess) throw Exception("Out-of-band credential authentication rejected by server.")
-    }
-
-    private suspend fun tryToAcquireToken(snapshot: Settings): Boolean {
-        val user = tStore.usernameFlow.firstOrNull()
-        val pass = tStore.passwordFlow.firstOrNull()
-
-        if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
-            Log.d(TM, "Exchanging raw credentials for fresh security token...")
-            return postGenerate(
-                snapshot,
-                TokenGenerateRequest(
-                    username = user,
-                    password = pass,
-                    expirationMinutes = snapshot.duration?.minutes ?: 60L
-                )
-            )
-        }
-        return false
     }
 
     suspend fun postGenerate(settings: Settings, request: TokenGenerateRequest): Boolean {
