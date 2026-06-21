@@ -27,64 +27,6 @@ class TokenManager private constructor(context: Context) {
     private val clientFactory: HttpClientFactory = createPlatformHttpClientFactory()
 
     /**
-     * Synchronously ensures that a valid token exists in storage.
-     * If the current token is missing or expired, it forces an out-of-band network refresh.
-     * Returns true if a valid token is ready, false if authentication failed.
-     */
-    suspend fun ensureValidToken(snapshot: Settings): Boolean {
-        // 1. CRITICAL VALIDATION CHECK:
-        // If the snapshot itself is invalid (missing domain, bad port, etc.),
-        // abort early to prevent the VPN engine from crashing.
-        if (!snapshot.isValid) {
-            Log.w(TM, "Pre-flight check aborted: Settings snapshot failed validation rules.")
-            return false
-        }
-
-        // 2. PROTOCOL TYPE ROUTING:
-        // If the crypto mode doesn't use JWT, it's immediately safe to proceed to socket creation
-        if (snapshot.crypto != Cryptos.JWT || snapshot.autoRenew == AutoRenew.NEVER) return true
-
-        // 3. CACHED TOKEN VALIDATION:
-        val jwt = snapshot.jwt
-        if (!jwt.isNullOrEmpty()) {
-            val expiresAt = getExpireInstant(jwt)
-            val now = Clock.System.now()
-
-            // If the token is still alive and has a safe cushion (> 5 minute left), proceed instantly
-            if (now < expiresAt && (expiresAt - now).inWholeMinutes > 5L) {
-                Log.d(TM, "Pre-flight check passed: Token is still valid.")
-                return true
-            }
-        }
-
-        // If we reach here, the token is either null, empty, or expired.
-        Log.i(
-            TM,
-            "Pre-flight check failed: Token missing or expired. Forcing out-of-band renewal..."
-        )
-
-        // 4. SECURE DATASTORE FALLBACK:
-        // look up the raw user credentials out-of-band from the DataStore
-        val user = tStore.usernameFlow.firstOrNull()
-        val pass = tStore.passwordFlow.firstOrNull()
-
-        if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
-            Log.d(TM, "Forced renewal falling back to saved user credentials...")
-            return postGenerate(
-                snapshot,
-                TokenGenerateRequest(
-                    username = user,
-                    password = pass,
-                    expirationMinutes = snapshot.duration?.minutes ?: 60L
-                )
-            )
-        }
-
-        Log.w(TM, "Forced pre-flight renewal failed: No valid credentials or tokens found.")
-        return false
-    }
-
-    /**
      * Accepts a stable snapshot of the active settings.
      * Manages the lifecycle of the one-time alarm loop.
      */
@@ -222,18 +164,36 @@ class TokenManager private constructor(context: Context) {
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    private fun getExpireInstant(jwt: String): Instant {
+    fun getExpireInstant(jwt: String?): Instant {
+        if (jwt.isNullOrEmpty()) {
+            return Instant.DISTANT_PAST
+        }
         return try {
             val parts = jwt.split(".")
             if (parts.size < 2) return Instant.DISTANT_PAST
-            val payload = Base64.decode(parts[1]).decodeToString()
+
+            var payloadPart = parts[1]
+
+            // 1. DYNAMIC PADDING FIX: Re-add missing '=' padding characters
+            // if the URL-safe token stripped them out.
+            val missingPadding = payloadPart.length % 4
+            if (missingPadding > 0) {
+                payloadPart += "=".repeat(4 - missingPadding)
+            }
+
+            // 2. USE URL-SAFE DECODER: Standard JWT payloads use URL-Safe base64 specifications
+            val payloadBytes = Base64.UrlSafe.decode(payloadPart)
+            val payload = payloadBytes.decodeToString()
+
             val json = Json.parseToJsonElement(payload).jsonObject
             val exp = json["exp"]?.jsonPrimitive?.longOrNull ?: return Instant.DISTANT_PAST
+
             Instant.fromEpochSeconds(exp)
         } catch (_: Exception) {
             Instant.DISTANT_PAST
         }
     }
+
 
     fun stopLifecycleTracking() {
         renewJob?.cancel()
