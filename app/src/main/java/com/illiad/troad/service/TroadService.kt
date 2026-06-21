@@ -91,7 +91,7 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
                 if (currentVpnInterface != null) {
                     vpnInterface = currentVpnInterface
                     // one-shot pre-flight effort to ensure header
-                    if (butler.prepareTunnelCredentials()) {
+                    if (butler.prepareHeader()) {
                         runVpnStack(currentVpnInterface.fd)
                         updateNotification(
                             "VPN Active",

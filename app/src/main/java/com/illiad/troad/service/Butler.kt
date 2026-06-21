@@ -119,7 +119,7 @@ class Butler private constructor(context: Context) {
      * Ensures the class-level 'header' field is populated with a valid key before exiting.
      * Returns true on success, false if the server rejects authentication.
      */
-    suspend fun prepareTunnelCredentials(): Boolean {
+    suspend fun prepareHeader(): Boolean {
         // 1. Fetch initial configuration context from disk
         var currentSettings = activeSettings ?: try {
             val fetched = settingsUseCase().first()
@@ -136,90 +136,73 @@ class Butler private constructor(context: Context) {
             return false
         }
 
-        // 3. Protocol Router: If it doesn't use JWT, immediately generate the static key header and exit
-        if (currentSettings.crypto != Cryptos.JWT) {
-            Log.i("Butler", "Pre-flight passed for static crypto protocol. Compiling handshake key.")
-            header = HeaderEncoder.encode(currentSettings.crypto, currentSettings.secret, currentSettings.jwt)
-            return header != null
-        }
+        try {
 
-        // 4. JWT Token Longevity Analysis
-        val jwt = currentSettings.jwt
-        var tokenIsValid = false
-
-        if (!jwt.isNullOrEmpty()) {
-            val expiresAt = tokenManager.getExpireInstant(jwt)
-            val now = Clock.System.now()
-
-            // Ensure token has a safe 1-minute transmission margin left
-            if (now < expiresAt && (expiresAt - now).inWholeMinutes > 1L) {
-                Log.d("Butler", "Pre-flight check passed: Token cache is still hot and valid.")
-                tokenIsValid = true
-            }
-        }
-
-        // 5. One-Shot Out-of-Band Forced Bootstrapping
-        if (!tokenIsValid) {
-            Log.i("Butler", "Token missing or dead at boot. Initiating one-shot out-of-band credential exchange...")
-
-            // Attempt immediate token-swap refresh using old JWT if available
-            var refreshSuccess = false
-            if (!jwt.isNullOrEmpty()) {
-                refreshSuccess = tokenManager.postGenerate(
-                    currentSettings,
-                    TokenGenerateRequest(
-                        currentToken = jwt,
-                        expirationMinutes = currentSettings.duration?.minutes ?: 60L
-                    )
+            // 3. Protocol Router: If it doesn't use JWT, immediately generate the static key header and exit
+            if (currentSettings.crypto != Cryptos.JWT) {
+                Log.i(
+                    "Butler",
+                    "Pre-flight passed for static crypto protocol. Compiling handshake key."
                 )
+                header = HeaderEncoder.encode(
+                    currentSettings.crypto,
+                    currentSettings.secret,
+                    currentSettings.jwt
+                )
+                return header != null
             }
 
-            // Complete Fallback: Fetch credentials single-shot from secure storage to resolve token
-            if (!refreshSuccess) {
+            var jwtValid = false
+
+            // 4. JWT null or expired, try to procure a jwt by username, password
+            if (Clock.System.now() > tokenManager.getExpireInstant(currentSettings.jwt)) {
+
                 val user = tStore.usernameFlow.firstOrNull()
                 val pass = tStore.passwordFlow.firstOrNull()
-
                 if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
-                    Log.d("Butler", "Exchanging raw user credentials for initial bootstrap token...")
-                    refreshSuccess = tokenManager.postGenerate(
-                        currentSettings,
-                        TokenGenerateRequest(
-                            username = user,
-                            password = pass,
-                            expirationMinutes = currentSettings.duration?.minutes ?: 60L
-                        )
+                    Log.d(
+                        "Butler",
+                        "Exchanging raw user credentials for initial bootstrap token..."
                     )
+
+                    if (tokenManager.postGenerate(
+                            currentSettings,
+                            TokenGenerateRequest(
+                                username = user,
+                                password = pass,
+                                expirationMinutes = currentSettings.duration?.minutes ?: 60L
+                            )
+                        )
+                    ) {
+                        // CRITICAL: Force an immediate single-shot read from the UseCase pipeline. this
+                        // guarantees we collect the new token string instead of using the old stale local parameter!
+                        currentSettings = settingsUseCase().first()
+                        activeSettings = currentSettings // Refresh cache
+                        jwtValid = true
+                    }
+
                 }
+            } else {
+                // 5. JWT valid
+                jwtValid = true
             }
 
-            if (!refreshSuccess) {
-                Log.w("Butler", "Forced one-shot bootstrap failed. Server rejected parameters.")
-                withContext(Dispatchers.Main) {
-                    controllerRef?.onPreFlightAuthenticationFailed("Authentication rejected by remote proxy.")
-                }
-                return false
+            // 6. Success State Assembly: Populate the class field directly and quit
+            if (jwtValid) {
+                header = HeaderEncoder.encode(
+                    currentSettings.crypto,
+                    currentSettings.secret,
+                    currentSettings.jwt
+                )
+                return header != null
             }
 
-            // 6. Force a quick re-read from DataStore to fetch the freshly minted token string
-            try {
-                currentSettings = settingsUseCase().first()
-                activeSettings = currentSettings
-            } catch (e: Exception) {
-                Log.e("Butler", "Failed collecting post-auth token update from disk", e)
-                return false
-            }
+        } catch (e: Exception) {
+            Log.e("Butler", "Failed collecting newly minted token post-authorization", e)
         }
 
-        // 7. Success State Assembly: Populate the class field directly and quit
-        header = HeaderEncoder.encode(
-            currentSettings.crypto,
-            currentSettings.secret,
-            currentSettings.jwt
-        )
-
-        return header != null
+        return false
     }
-
 
     /**
      * Gracefully cuts down tracking loops when the VPN disconnects.
