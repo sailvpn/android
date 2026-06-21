@@ -1,5 +1,7 @@
 package com.illiad.troad.service.security.client
 
+import kotlinx.serialization.Serializable
+
 /**
  * Request object for token generation.
  * Supports 3 authentication alternatives:
@@ -10,7 +12,7 @@ package com.illiad.troad.service.security.client
  *
  * Optional: sendEmail flag to have the token sent to user's email
  */
-
+@Serializable
 data class TokenGenerateRequest(
     // Alternative 1: Username + Password
     val username: String? = null,
