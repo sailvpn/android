@@ -101,7 +101,7 @@ class TokenManager private constructor(context: Context) {
             // D. RE-EVALUATION PASSTHROUGH: Fetch newest data reflecting updates on a normal timeout wakeup
             executionSettings = try {
                 settingsUseCase().firstOrNull() ?: currentSettings
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 currentSettings
             }
 
