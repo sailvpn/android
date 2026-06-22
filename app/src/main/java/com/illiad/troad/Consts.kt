@@ -16,7 +16,8 @@ object Consts {
     const val ACTION_DISCONNECT = "dtpov"
     const val ACTION_RESTART = "b5jku"
 
-    const val NOTIFICATION_CHANNEL_ID = "SailVpn"
+    const val CHANNEL_ID = "sail_vpn"
+    const val CHANNEL_NAME = "Sail"
     const val NOTIFICATION_ID = 1 // Unique ID for the notification
     const val INTENT_OPEN_APP = 1001 // Or any other unique integer
     const val INTENT_DISCONNECT = 1002

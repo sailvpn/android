@@ -2,6 +2,7 @@ package com.illiad.troad.service
 
 import android.annotation.SuppressLint
 import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
@@ -12,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -23,7 +25,8 @@ import com.illiad.troad.Consts.ACTION_VPN_STATUS_BROADCAST
 import com.illiad.troad.Consts.EXTRA_MSG
 import com.illiad.troad.Consts.EXTRA_STATE
 import com.illiad.troad.Consts.MTU
-import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_ID
+import com.illiad.troad.Consts.CHANNEL_ID
+import com.illiad.troad.Consts.CHANNEL_NAME
 import com.illiad.troad.Consts.NOTIFICATION_ID
 import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.tunIp10_8_0_2
@@ -55,9 +58,20 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
 
     override fun onCreate() {
         super.onCreate()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
-        // Bind your clean Butler orchestration component
+        // 1. CONSTRUCT THE MANDATORY NOTIFICATION CHANNEL CONTAINER:
+        val importance = NotificationManager.IMPORTANCE_LOW // Keeps it quiet, preventing notification sounds
+
+        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, importance).apply {
+            description = "Maintains active device encryption traffic monitoring"
+            setShowBadge(false)
+        }
+
+        // Register the channel with the Android OS notification subsystem
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(channel)
+
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         butler.startMonitoring(this)
     }
 
@@ -278,57 +292,35 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
      * @param statusColor The accent color to apply to the notification UI.
      */
     private fun createNotification(text: String, iconResId: Int, statusColor: Int): Notification {
-        // 1. COMPILATION FIX: Ensure the inline closure returns a strict PendingIntent type contract
+
         val buildPendingIntent = { action: String, code: Int ->
             val isDisconnect = action == ACTION_DISCONNECT
-            val intent = Intent(
-                this,
-                if (isDisconnect) TroadService::class.java else MainActivity::class.java
-            ).apply {
+            val intent = Intent(this, if (isDisconnect) TroadService::class.java else MainActivity::class.java).apply {
                 this.action = action
-                // If opening the UI activity, ensure it recycles the existing window instead of duplicating tasks
                 if (!isDisconnect) {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 }
             }
 
-            if (isDisconnect) {
-                // Background service intents must be completely immutable for platform security compliance
-                PendingIntent.getService(
-                    this,
-                    code,
-                    intent,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
-            } else {
-                // Activity routing paths are safe with FLAG_IMMUTABLE on Android 12+ if no extras are appended
-                PendingIntent.getActivity(
-                    this,
-                    code,
-                    intent,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
-            }
+            PendingIntent.getService(
+                this, code, intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
         }
 
-        // 2. BUILD THE STANDARD SYSTEM FOREGROUND CONTAINER:
-        // Ensure you create the notification channel elsewhere in onCreate() for Android 8.0+
-        return androidx.core.app.NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+        // Use NotificationCompat.Builder to abstract away underlying version quirks safely
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
-            .setSmallIcon(iconResId)
-            .setColor(statusColor) // Applies your sand-gold, wave-blue, or failure-red themes cleanly
+            .setSmallIcon(iconResId) // CRITICAL: Ensure R.drawable.ic_vpn_on exists and compiles cleanly
+            .setColor(statusColor)
             .setOngoing(true)
             .setShowWhen(false)
-            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW) // Keeps it quiet on the status bar
-
-            // Clicking the main body of the notification opens your App Dashboard UI activity
-            .setContentIntent(buildPendingIntent(ACTION_CONNECT, INTENT_OPEN_APP))
-
-            // Add a punchy action button to allow users to disconnect instantly from the tray
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(buildPendingIntent("MainView", INTENT_OPEN_APP))
             .addAction(
-                R.drawable.ic_vpn_on, // Replace with your tiny close/disconnect asset icon
+                iconResId, // Use your existing valid icon asset identifier for the disconnect button row
                 "Disconnect",
                 buildPendingIntent(ACTION_DISCONNECT, INTENT_DISCONNECT)
             )
