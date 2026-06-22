@@ -2,7 +2,6 @@ package com.illiad.troad.model
 
 import androidx.compose.ui.graphics.Color
 import com.illiad.troad.ui.theme.OceanPrimaryDark
-import com.illiad.troad.ui.theme.OceanTertiaryDark
 
 /**
  * Represents the complete, type-safe lifecycle architecture of your VPN tunnel layer.
@@ -42,7 +41,7 @@ sealed interface VpnStatus {
         val uploadSpeed: String = "0.0 Mbps"
     ) : VpnStatus {
         override val statusLabel: String = "Connected"
-        override val sailBgColor: Color = OceanTertiaryDark // Sand-Gold Highlights (#FFE4A7)
+        override val sailBgColor: Color = Color(0xFFFFE4A7) // Sand-Gold Highlights (#FFE4A7)
     }
 
     /**
@@ -51,6 +50,6 @@ sealed interface VpnStatus {
      */
     data class Error(val message: String) : VpnStatus {
         override val statusLabel: String = message
-        override val sailBgColor: Color = Color(0xFFEF4444) // Error Red
+        override val sailBgColor: Color = Color(0xFFF1F5F9) // Slate-100 fallback
     }
 }
