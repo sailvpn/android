@@ -106,8 +106,5 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-
-
-
 }
 
