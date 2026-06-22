@@ -18,7 +18,8 @@ object Consts {
 
     const val NOTIFICATION_CHANNEL_ID = "SailVpn"
     const val NOTIFICATION_ID = 1 // Unique ID for the notification
-    const val PENDING_INTENT_REQUEST_CODE_DISCONNECT = 1002
+    const val INTENT_OPEN_APP = 1001 // Or any other unique integer
+    const val INTENT_DISCONNECT = 1002
 
     // ... other constants ...
     const val ACTION_VPN_STATUS_BROADCAST = "zsg35"

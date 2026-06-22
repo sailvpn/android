@@ -5,12 +5,13 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -24,7 +25,6 @@ import com.illiad.troad.Consts.EXTRA_STATE
 import com.illiad.troad.Consts.MTU
 import com.illiad.troad.Consts.NOTIFICATION_CHANNEL_ID
 import com.illiad.troad.Consts.NOTIFICATION_ID
-import com.illiad.troad.Consts.PENDING_INTENT_REQUEST_CODE_DISCONNECT
 import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.tunIp10_8_0_2
 import com.illiad.troad.MainActivity
@@ -38,6 +38,8 @@ import troadengine.Troadengine
 import java.io.File
 import java.io.IOException
 import androidx.core.graphics.toColorInt
+import com.illiad.troad.Consts.INTENT_DISCONNECT
+import com.illiad.troad.Consts.INTENT_OPEN_APP
 
 // 1. CHANGE INHERITANCE: Must be VpnService, manually providing LifecycleOwner
 @SuppressLint("VpnServicePolicy")
@@ -75,42 +77,59 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
 
     private fun handleConnect() {
         if (vpnInterface != null) return
-        startForeground(
-            NOTIFICATION_ID,
-            createNotification(
-                "Connecting...",
-                R.drawable.ic_vpn_on,
-                "#0284C7".toColorInt()
-            )
+
+        // 1. RESOLVE COLOR SAFELY: Use native parseColor to prevent KTX dependency anomalies
+        val notification = createNotification(
+            "Connecting...",
+            R.drawable.ic_vpn_on,
+            "#0284C7".toColorInt() // Pristine Wave Blue color assignment
         )
 
+        // 2. BROADCAST CONNECTING TRANSIT STATE:
+        // Update the Butler and ViewModel right away so the dashboard changes state
+        broadcastStatus(VpnState.CONNECTING, "Connecting...")
+
+        // 3. API 34+ COMPLIANT FOREGROUND RUNNER:
+        // Switched away from SPECIAL_USE to eliminate Google Play Store rejection parameters.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED // The designated VPN service type [3, 4]
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        // 4. FIRE COROUTINE PRE-FLIGHT VALIDATION:
         vpnJob = lifecycleScope.launch {
             try {
-                // Now perfectly legal to call because this class IS an official VpnService
-                val currentVpnInterface = establishVpnInterfaceReturn()
-                if (currentVpnInterface != null) {
-                    vpnInterface = currentVpnInterface
-                    // one-shot pre-flight effort to ensure header
+                val currentInterface = establishVpnInterfaceReturn()
+                if (currentInterface != null) {
+                    vpnInterface = currentInterface
+
+                    // Call your unified Butler one-shot pre-flight authentication verification blocker
+                    broadcastStatus(VpnState.CONNECTING, "Authenticating...")
+
                     if (butler.prepareHeader()) {
-                        runVpnStack(currentVpnInterface.fd)
-                        updateNotification(
-                            "VPN Active",
-                            R.drawable.ic_vpn_on,
-                            "#FFE4A7".toColorInt()
-                        )
-                        broadcastStatus(VpnState.CONNECTED, "Connected")
+
+                        // Launch the native blocking Go loop thread safely
+                        runVpnStack(currentInterface.fd)
+
+                        // Update layout color parameters to your Sand-Gold highlight theme
+                        updateNotification("Sail ON", R.drawable.ic_vpn_on,
+                            "#FFE4A7".toColorInt())
+                        broadcastStatus(VpnState.CONNECTED)
                     } else {
-                        closeInterfaceQuietly(currentVpnInterface)
-                        vpnInterface = null
+                        // Pre-flight authorization rejected or network timed out
+                        handleConnectionFailure("Authentication failed. Please check your credentials.")
                     }
                 } else {
-                    // CONNECTION FAIL: System couldn't establish the interface (e.g., restricted profile)
-                    handleConnectionFailure("Failed to allocate secure interface.")
+                    handleConnectionFailure("Failed to allocate secure system routing interface.")
                 }
             } catch (e: Exception) {
-                // SOFTWARE FAIL: Complete failure inside setup coroutines
-                Log.e(TS, "Fatal Internal Software Crash", e)
-                terminateEntireAppSilently()
+                Log.e(TS, "Fatal Internal Error inside startup pipeline", e)
+                handleConnectionFailure("Internal software error occurred during connection configuration.")
             }
         }
     }
@@ -259,31 +278,63 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
      * @param statusColor The accent color to apply to the notification UI.
      */
     private fun createNotification(text: String, iconResId: Int, statusColor: Int): Notification {
-        val pendingIntent = { action: String, code: Int ->
+        // 1. COMPILATION FIX: Ensure the inline closure returns a strict PendingIntent type contract
+        val buildPendingIntent = { action: String, code: Int ->
+            val isDisconnect = action == ACTION_DISCONNECT
             val intent = Intent(
                 this,
-                if (action == ACTION_DISCONNECT) TroadService::class.java else MainActivity::class.java
-            )
-            intent.action = action
-            PendingIntent.getService(this, code, intent, PendingIntent.FLAG_IMMUTABLE)
+                if (isDisconnect) TroadService::class.java else MainActivity::class.java
+            ).apply {
+                this.action = action
+                // If opening the UI activity, ensure it recycles the existing window instead of duplicating tasks
+                if (!isDisconnect) {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+            }
+
+            if (isDisconnect) {
+                // Background service intents must be completely immutable for platform security compliance
+                PendingIntent.getService(
+                    this,
+                    code,
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            } else {
+                // Activity routing paths are safe with FLAG_IMMUTABLE on Android 12+ if no extras are appended
+                PendingIntent.getActivity(
+                    this,
+                    code,
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            }
         }
 
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            // Set both small and large to the identical token asset id
-            // This ensures the status bar line and expanded tray panel sync status identically
-            .setSmallIcon(iconResId)
-            .setColor(statusColor)
-            .setColorized(true)
-            .setContentTitle("Sail Vpn")
+        // 2. BUILD THE STANDARD SYSTEM FOREGROUND CONTAINER:
+        // Ensure you create the notification channel elsewhere in onCreate() for Android 8.0+
+        return androidx.core.app.NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
+            .setSmallIcon(iconResId)
+            .setColor(statusColor) // Applies your sand-gold, wave-blue, or failure-red themes cleanly
             .setOngoing(true)
+            .setShowWhen(false)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW) // Keeps it quiet on the status bar
+
+            // Clicking the main body of the notification opens your App Dashboard UI activity
+            .setContentIntent(buildPendingIntent(ACTION_CONNECT, INTENT_OPEN_APP))
+
+            // Add a punchy action button to allow users to disconnect instantly from the tray
             .addAction(
-                R.drawable.ic_vpn_off,
+                R.drawable.ic_vpn_on, // Replace with your tiny close/disconnect asset icon
                 "Disconnect",
-                pendingIntent(ACTION_DISCONNECT, PENDING_INTENT_REQUEST_CODE_DISCONNECT)
+                buildPendingIntent(ACTION_DISCONNECT, INTENT_DISCONNECT)
             )
             .build()
     }
+
 
     /**
      * CONNECTION FAIL HANDLER: Holds the app process alive in memory space,
