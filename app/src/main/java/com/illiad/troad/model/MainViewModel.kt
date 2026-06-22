@@ -9,84 +9,102 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
 import com.illiad.troad.service.TroadService
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
-    // UI state for the Main screen only
+    // UI state for the START/STOP toggle button styling
     var isProxyRunning by mutableStateOf(false)
         private set
 
-    // 1. Maintain a single source of truth using the sealed model type
+    // Strict status state machine synchronized with the TroadService lifecycle broadcasts
     var vpnState: VpnStatus by mutableStateOf(VpnStatus.Disconnected)
         private set
 
-    // NEW: Persistent error queue for the global dialog (Observed reactively by Compose)
+    // Persistent error alert queue observed reactively by Compose AlertDialog overlays
     val errorQueue = mutableStateListOf<String>()
 
+    // 1. FIXED NAVIGATION STATE: Driven by Compose mutableStateOf for automatic UI re-composition
     var currentScreen by mutableStateOf(Screen.Main)
         private set
 
-    // Holds the optimized presentation model for targeted recomposition paths
-    var speedMetrics by mutableStateOf(SpeedMetrics())
-        private set
-
-    private val jsonParser = Json { ignoreUnknownKeys = true }
-
-    fun startProxyService() {
-        val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
-            action = ACTION_CONNECT
-        }
-        ContextCompat.startForegroundService(app, startTroad)
-    }
-
-    fun stopProxyService() {
-        Log.d("ViewModel", "Stopping proxy service")
-        val stopTroad = Intent(app.applicationContext, TroadService::class.java).apply {
-            action = ACTION_DISCONNECT
-        }
-        ContextCompat.startForegroundService(app, stopTroad)
-    }
-
+    /**
+     * 2. FIXED NAVIGATION ROUTER: Updates the current screen target state.
+     * Called directly from MainActivity.kt and MainView.kt to toggle view contexts.
+     */
     fun navigateTo(screen: Screen) {
         currentScreen = screen
     }
 
-    fun updateVpnStatus(state: VpnState, message: String?) {
-        isProxyRunning = (state == VpnState.CONNECTED || state == VpnState.SPEED)
+    fun startProxyService() {
+        Log.d("ViewModel", "User clicked START. Initiating tactile intent toggle...")
+        isProxyRunning = true
+        vpnState = VpnStatus.Connecting("Connecting...")
 
-        // 1. FAST PATH FOR SPEED METRICS PROCESSING:
-        if (state == VpnState.SPEED) {
-            if (!message.isNullOrBlank()) {
-                try {
-                    val parsedMetrics = jsonParser.decodeFromString<SpeedMetricsPayload>(message)
-
-                    // Format numeric raw bytes cleanly right at the presentation boundary
-                    speedMetrics = SpeedMetrics(
-                        down = BandwidthFormatter.formatSpeed(parsedMetrics.down),
-                        up = BandwidthFormatter.formatSpeed(parsedMetrics.up)
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("ViewModel", "Failed parsing numeric Speed JSON", e)
+        viewModelScope.launch {
+            delay(300) // Tactile feel delay window
+            if (isProxyRunning) {
+                val startTroad = Intent(app.applicationContext, TroadService::class.java).apply {
+                    action = ACTION_CONNECT
                 }
+                ContextCompat.startForegroundService(app, startTroad)
             }
-            return // Exit execution early to lock out heavy background canvas re-paints
         }
+    }
 
-        // 2. STANDARD LIFE-CYCLE STATE MACHINE ROUTING:
+    fun stopProxyService() {
+        Log.d("ViewModel", "User clicked STOP. Terminating/aborting service pipeline...")
+        isProxyRunning = false
+        vpnState = VpnStatus.Disconnected
+
+        viewModelScope.launch {
+            delay(150)
+            val stopTroad = Intent(app.applicationContext, TroadService::class.java).apply {
+                action = ACTION_DISCONNECT
+            }
+            ContextCompat.startForegroundService(app, stopTroad)
+        }
+    }
+
+    fun dismissError() {
+        if (errorQueue.isNotEmpty()) {
+            errorQueue.removeAt(0)
+        }
+    }
+
+    fun updateVpnStatus(state: VpnState, message: String?) {
         val newState = when (state) {
-            VpnState.CONNECTED -> VpnStatus.Connected()
-            VpnState.CONNECTING -> VpnStatus.Connecting(message ?: "Connecting...")
-            VpnState.RECONNECTING -> VpnStatus.Connecting(message ?: "Reconnecting...")
-            VpnState.ERROR -> VpnStatus.Error(message ?: "An unexpected error occurred.")
+            VpnState.CONNECTED -> {
+                isProxyRunning = true
+                VpnStatus.Connected()
+            }
+
+            VpnState.CONNECTING -> {
+                if (!isProxyRunning) return
+                VpnStatus.Connecting(message ?: "Connecting...")
+            }
+
+            VpnState.RECONNECTING -> {
+                if (!isProxyRunning) return
+                VpnStatus.Connecting(message ?: "Reconnecting...")
+            }
+
+            VpnState.ERROR -> {
+                isProxyRunning = false
+                VpnStatus.Error(message ?: "An unexpected error occurred.")
+            }
+
             VpnState.DISCONNECTED -> {
-                speedMetrics = SpeedMetrics() // Reset text meters to baseline zero strings instantly
+                isProxyRunning = false
                 VpnStatus.Disconnected
             }
-            else -> VpnStatus.Disconnected
+
+            VpnState.SPEED -> vpnState
         }
 
         if (newState is VpnStatus.Error) {
@@ -95,16 +113,6 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
         vpnState = newState
     }
-
-    /**
-     * DISMISS ACTION: Safely pops the top error out of the snapshot array.
-     * Recomposes your global Compose Dialog overlay layout automatically.
-     */
-    fun dismissError() {
-        if (errorQueue.isNotEmpty()) {
-            errorQueue.removeAt(0) // First-In, First-Out (FIFO) queue popping
-        }
-    }
-
 }
+
 

@@ -157,31 +157,4 @@ fun MainView(viewModel: MainViewModel) {
     }
 }
 
-@Composable
-fun SpeedMetricsDashboard(viewModel: MainViewModel) {
-    val activeState = viewModel.vpnState
-    val metrics = viewModel.speedMetrics // Reads the optimized SpeedMetrics object
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(activeState.sailBgColor) // Stable canvas background color
-            .padding(16.dp)
-    ) {
-        Text(text = activeState.statusLabel, style = MaterialTheme.typography.headlineMedium)
-
-        if (viewModel.isProxyRunning) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Short, punchy property queries map cleanly to screen labels
-                Text(text = "Down: ${metrics.down}", style = MaterialTheme.typography.bodyLarge)
-                Text(text = "Up: ${metrics.up}", style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-    }
-}
-
-
 
