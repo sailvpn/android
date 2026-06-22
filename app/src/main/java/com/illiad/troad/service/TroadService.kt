@@ -60,7 +60,8 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
         super.onCreate()
 
         // 1. CONSTRUCT THE MANDATORY NOTIFICATION CHANNEL CONTAINER:
-        val importance = NotificationManager.IMPORTANCE_LOW // Keeps it quiet, preventing notification sounds
+        val importance =
+            NotificationManager.IMPORTANCE_LOW // Keeps it quiet, preventing notification sounds
 
         val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, importance).apply {
             description = "Maintains active device encryption traffic monitoring"
@@ -92,24 +93,21 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
     private fun handleConnect() {
         if (vpnInterface != null) return
 
-        // 1. RESOLVE COLOR SAFELY: Use native parseColor to prevent KTX dependency anomalies
+        // Clear and explicit parsing avoids color integer definition faults
         val notification = createNotification(
             "Connecting...",
             R.drawable.ic_vpn_on,
-            "#0284C7".toColorInt() // Pristine Wave Blue color assignment
+            "#0284C7".toColorInt()
         )
 
-        // 2. BROADCAST CONNECTING TRANSIT STATE:
-        // Update the Butler and ViewModel right away so the dashboard changes state
         broadcastStatus(VpnState.CONNECTING, "Connecting...")
 
-        // 3. API 34+ COMPLIANT FOREGROUND RUNNER:
-        // Switched away from SPECIAL_USE to eliminate Google Play Store rejection parameters.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED // The designated VPN service type [3, 4]
+                // CRITICAL SYNC FIX: Matches foregroundServiceType="systemExempted" inside the Manifest!
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
@@ -131,8 +129,10 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
                         runVpnStack(currentInterface.fd)
 
                         // Update layout color parameters to your Sand-Gold highlight theme
-                        updateNotification("Sail ON", R.drawable.ic_vpn_on,
-                            "#FFE4A7".toColorInt())
+                        updateNotification(
+                            "Sail ON", R.drawable.ic_vpn_on,
+                            "#FFE4A7".toColorInt()
+                        )
                         broadcastStatus(VpnState.CONNECTED)
                     } else {
                         // Pre-flight authorization rejected or network timed out
@@ -295,7 +295,10 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
 
         val buildPendingIntent = { action: String, code: Int ->
             val isDisconnect = action == ACTION_DISCONNECT
-            val intent = Intent(this, if (isDisconnect) TroadService::class.java else MainActivity::class.java).apply {
+            val intent = Intent(
+                this,
+                if (isDisconnect) TroadService::class.java else MainActivity::class.java
+            ).apply {
                 this.action = action
                 if (!isDisconnect) {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
