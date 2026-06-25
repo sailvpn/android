@@ -3,53 +3,45 @@ package com.illiad.troad.service.security
 /**
  *
  * Pure Kotlin HeaderEncoder.
- * Generates a URL-Safe Base64 String containing:
- * [2 bytes Length][1 byte CryptoType][Signature][Offset][2 bytes CRLF]
- *
- * if the encryption returns a fixed-length signature, the length field contains the whole length(length + cryptoType + signature + offset CRLF).
- * if the encryption returns a variable-length signature, the length field contain the length of the signature only(length + cryptoType + signature).
+ * illiad header frame:
+ * - 2 bytes: frame length (unsigned short)
+ * - 2 bytes: token length (unsigned short)
+ * - 1 byte: crypto type
+ * - token bytes: variable
+ * - random bytes: variable
  */
 object HeaderEncoder {
 
-    private val CRLF = byteArrayOf(0x0D, 0x0A)
     fun encode(crypto: Cryptos, secret: String?, token: String?): ByteArray? {
-        // 1. Get secrets from your implementation
+        // 1. Get secrets
         val secretBytes = Secret.secret(crypto, secret, token) ?: return null
-        val offset = Secret.offset()
-        val signLength = crypto.length
-
-        // 2. Calculate the "Header Length" field based on your protocol logic
-        val headerLengthField: Int = if (signLength > 0) {
-            // Fixed length: (Length(2) + Type(1) + Sign + Offset + CRLF(2)) = signLength + offset.size + 5
-            signLength + offset.size + 5
-        } else {
-            // Variable length: (Length(2) + Type(1) + Sign) = secretBytes.size + 3
-            secretBytes.size + 3
+        if (secretBytes.isEmpty()) {
+            return null
         }
+        val offset = Secret.offset()
 
-        // 3. Build the Raw Byte Array
-        // Total size = 2 (length) + 1 (type) + signature + offset + 2 (CRLF)
-        val totalSize = 2 + 1 + secretBytes.size + offset.size + 2
-        val header = ByteArray(totalSize)
+        val secretLen = secretBytes.size
+        val offsetLen = offset.size
+        // 2 bytes (tokenLen) + 1 byte (typeInfo) + Token length + offset length
+        val frameLen = 3 + secretLen + offsetLen
+
+        // 3. Build the Raw Byte Array, Total size = 2 bytes (framelen) + frameLength
+        val header = ByteArray(2 + frameLen)
 
         var pos = 0
-        // Write Short (Big Endian)
-        header[pos++] = (headerLengthField shr 8).toByte()
-        header[pos++] = (headerLengthField and 0xFF).toByte()
-
+        // Write Short frameLen (Big Endian)
+        header[pos++] = (frameLen shr 8).toByte()
+        header[pos++] = (frameLen and 0xFF).toByte()
+        // Write Short secretLen (Big Endian)
+        header[pos++] = (secretLen shr 8).toByte()
+        header[pos++] = (secretLen and 0xFF).toByte()
         // Write Crypto Type
         header[pos++] = crypto.code.toByte()
-
         // Write Signature (Secret)
         secretBytes.copyInto(header, destinationOffset = pos)
-        pos += secretBytes.size
-
+        pos += secretLen
         // Write Offset
         offset.copyInto(header, destinationOffset = pos)
-        pos += offset.size
-
-        // Write CRLF
-        CRLF.copyInto(header, destinationOffset = pos)
 
         return header
     }
