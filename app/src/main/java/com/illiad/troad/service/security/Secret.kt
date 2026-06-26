@@ -2,12 +2,18 @@ package com.illiad.troad.service.security
 
 import com.illiad.troad.Consts.MAX
 import com.illiad.troad.Consts.MIN
-import kotlin.random.Random
+import java.security.MessageDigest
+import java.security.SecureRandom
 
 object Secret {
 
-    // Use Kotlin's Random.Default (uses SecureRandom under the hood on JVM/Android)
-    private val random = Random.Default
+    // FIX: Mandate True Cryptographically Secure RNG for network defense
+    private val secureRandom = SecureRandom()
+
+    // Optimization: ThreadLocal prevents global locking bottlenecks in high-concurrency loops
+    private val digestThreadLocal = ThreadLocal.withInitial {
+        MessageDigest.getInstance("SHA-256")
+    }
 
     fun secret(crypto: Cryptos, secret: String?, token: String?): ByteArray? {
         return try {
@@ -24,27 +30,31 @@ object Secret {
 
                 else -> null
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
 
     fun offset(): ByteArray {
-        // Kotlin Random range: nextInt(min, max)
-        val offsetLen = random.nextInt(MIN, MAX)
-        return random.nextBytes(offsetLen)
+        // Compute length boundary limits securely
+        val range = MAX - MIN
+        val offsetLen = secureRandom.nextInt(range) + MIN
+
+        // Populate array with true high-entropy cryptographic noise
+        val padding = ByteArray(offsetLen)
+        secureRandom.nextBytes(padding)
+        return padding
     }
 
     /**
-     * Cross-platform SHA-256 helper.
-     * On Android, this still maps to MessageDigest.
-     * On iOS/Native, it maps to CommonCrypto.
+     * Highly Optimized Thread-Safe SHA-256 helper.
      */
     private fun sha256(input: ByteArray): ByteArray {
-        // If sticking to Android-only for now:
-        return java.security.MessageDigest.getInstance("SHA-256").digest(input)
-
-        // Note: For true KMP, move this to an 'expect' function
-        // and implement with CommonCrypto on iOS.
+        val md = digestThreadLocal.get()
+        if (md == null) {
+            throw Exception("MessageDigest null")
+        }
+        md.reset() // Wipe state clean before digest reuse
+        return md.digest(input)
     }
 }
