@@ -15,6 +15,7 @@ import com.illiad.troad.Consts.ACTION_DISCONNECT
 import com.illiad.troad.service.TroadService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import troadengine.Troadengine
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
@@ -32,6 +33,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // 1. FIXED NAVIGATION STATE: Driven by Compose mutableStateOf for automatic UI re-composition
     var currentScreen by mutableStateOf(Screen.Main)
         private set
+
+    init {
+        // Synchronize initial state with the native engine
+        try {
+            if (Troadengine.isRunning()) {
+                isProxyRunning = true
+                vpnState = VpnStatus.Connected()
+            }
+        } catch (e: Throwable) {
+            Log.e("MainViewModel", "Failed to check initial engine state", e)
+        }
+    }
 
     /**
      * 2. FIXED NAVIGATION ROUTER: Updates the current screen target state.

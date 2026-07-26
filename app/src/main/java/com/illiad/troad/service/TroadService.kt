@@ -28,6 +28,8 @@ import com.illiad.troad.Consts.MTU
 import com.illiad.troad.Consts.CHANNEL_ID
 import com.illiad.troad.Consts.CHANNEL_NAME
 import com.illiad.troad.Consts.NOTIFICATION_ID
+import com.illiad.troad.Consts.DNS1111
+import com.illiad.troad.Consts.DNS1001
 import com.illiad.troad.Consts.TS
 import com.illiad.troad.Consts.tunIp10_8_0_2
 import com.illiad.troad.MainActivity
@@ -151,6 +153,12 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
     override fun requestHardRestart(bootHeader: ByteArray) {
         Log.d(TS, "Executing atomic VPN tunnel interface cycle...")
         vpnJob?.cancel()
+
+        // Ensure the native engine is stopped before cycling the interface
+        try {
+            Troadengine.stopTroad()
+        } catch (_: Exception) {}
+
         closeInterfaceQuietly(vpnInterface)
         vpnInterface = null
 
@@ -261,6 +269,12 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
         }
     }
 
+    override fun onRevoke() {
+        Log.w(TS, "VPN permission revoked by system.")
+        stopVpn()
+        super.onRevoke()
+    }
+
     override fun onDestroy() {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         butler.stopMonitoring()
@@ -305,10 +319,17 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
                 }
             }
 
-            PendingIntent.getService(
-                this, code, intent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
+            if (isDisconnect) {
+                PendingIntent.getService(
+                    this, code, intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            } else {
+                PendingIntent.getActivity(
+                    this, code, intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            }
         }
 
         // Use NotificationCompat.Builder to abstract away underlying version quirks safely
