@@ -1,11 +1,10 @@
-name: Android Release Build (AAB & APK on Any Tag)
+name: Android Release Build (Dynamic Path Fix)
 
 on:
   push:
     tags:
       - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed from any branch
 
-# Explicitly grants the script permission to write binaries to your Releases page
 permissions:
   contents: write
 
@@ -34,28 +33,36 @@ jobs:
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: Upload the traditional APK package as a downloadable artifact (Kept for 1 day only)
+      # Step 5: DIAGNOSTIC STEP - Maps out your build outputs directory to find the files
+      - name: Map Build Outputs Structure
+        run: |
+          echo "=== Searching for generated APK files ==="
+          find . -name "*.apk" -type f
+          echo "=== Searching for generated AAB files ==="
+          find . -name "*.aab" -type f
+
+      # Step 6: Upload the traditional APK package using a global directory search
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: app/build/outputs/apk/release/*.apk
-          retention-days: 1 # Drastically reduces your storage quota footprint
+          path: "**/build/outputs/apk/release/*.apk" # <--- FIXED: Global wildcard search
+          retention-days: 1
 
-      # Step 6: Upload the App Bundle (AAB) package as a downloadable artifact (Kept for 1 day only)
+      # Step 7: Upload the App Bundle (AAB) package using a global directory search
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
           name: production-play-store-bundle
-          path: app/build/outputs/bundle/release/*.aab
-          retention-days: 1 # Drastically reduces your storage quota footprint
+          path: "**/build/outputs/bundle/release/*.aab" # <--- FIXED: Global wildcard search
+          retention-days: 1
 
-      # Step 7: Push the compiled files directly into the GitHub Release dashboard
+      # Step 8: Push the compiled files directly into the GitHub Release dashboard
       - name: Publish Binaries to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
+            **/build/outputs/apk/release/*.apk
+            **/build/outputs/bundle/release/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
