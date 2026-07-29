@@ -1,23 +1,33 @@
-name: Android Release Build (AAB & APK)
+name: Android Release Build (AAB & APK on Release Tag Only)
 
-# Trigger the workflow only on pushes or pull requests to the 'release' branch
 on:
   push:
-    branches: [ "release" ]
-  pull_request:
-    branches: [ "release" ]
+    tags:
+      - 'v*' # Triggers the environment whenever a version tag is pushed
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Download your repository's source code onto the GitHub runner
+      # Step 1: Download your repository's source code along with its entire history
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches full history so git can trace branch lineages properly
 
-      # Step 2: Set up the Java environment required by Gradle
-      # (Uses JDK 17 and enables automatic Gradle dependency caching to speed up future runs)
+      # Step 2: Programmatically verify if this tag belongs to the 'release' branch
+      - name: Verify Branch Lineage
+        run: |
+          # Use git branch to find all remote branches containing the current tag
+          if ! git branch -r --contains ${{ github.ref }} | grep -E 'origin/release$'; then
+            echo "Error: Tag ${{ github.ref_name }} was not pushed onto the 'release' branch."
+            echo "Canceling compilation pipeline."
+            exit 1
+          fi
+          echo "Success: Tag verified on the 'release' branch. Continuing build..."
+
+      # Step 3: Set up the Java environment required by Gradle
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -25,22 +35,22 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # Step 3: Ensure Linux permissions allow the Gradle wrapper script to run
+      # Step 4: Ensure Linux permissions allow the Gradle wrapper script to run
       - name: Grant Execute Permission for Gradlew
         run: chmod +x ./gradlew
 
-      # Step 4: Run Gradle to compile BOTH the release APK and the release AAB bundle
+      # Step 5: Run Gradle to compile BOTH the release APK and the release AAB bundle
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: Upload the traditional APK package as a downloadable artifact
+      # Step 6: Upload the traditional APK package as a downloadable artifact
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
           path: app/build/outputs/apk/release/sail.apk
 
-      # Step 6: Upload the App Bundle (AAB) package as a downloadable artifact
+      # Step 7: Upload the App Bundle (AAB) package as a downloadable artifact
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
