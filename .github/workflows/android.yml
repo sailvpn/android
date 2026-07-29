@@ -1,10 +1,11 @@
-name: Android Release Build (Dynamic Path Fix)
+name: Android Release Build (Resilient CI Pipeline)
 
 on:
   push:
     tags:
       - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed from any branch
 
+# Explicitly grants the script permission to write binaries to your Releases page
 permissions:
   contents: write
 
@@ -33,7 +34,7 @@ jobs:
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: DIAGNOSTIC STEP - Maps out your build outputs directory to find the files
+      # Step 5: Resiliency Map - Scans directory and logs exact paths for troubleshooting
       - name: Map Build Outputs Structure
         run: |
           echo "=== Searching for generated APK files ==="
@@ -46,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: "**/build/outputs/apk/release/*.apk" # <--- FIXED: Global wildcard search
+          path: "**/build/outputs/apk/release/*.apk"
           retention-days: 1
 
       # Step 7: Upload the App Bundle (AAB) package using a global directory search
@@ -54,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: production-play-store-bundle
-          path: "**/build/outputs/bundle/release/*.aab" # <--- FIXED: Global wildcard search
+          path: "**/build/outputs/bundle/release/*.aab"
           retention-days: 1
 
       # Step 8: Push the compiled files directly into the GitHub Release dashboard
