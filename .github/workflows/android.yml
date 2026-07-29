@@ -38,11 +38,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: app/build/outputs/apk/release/sail.apk
 
       # Step 6: Upload the App Bundle (AAB) package as a downloadable artifact
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
           name: production-play-store-bundle
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: app/build/outputs/bundle/release/sail.aab
