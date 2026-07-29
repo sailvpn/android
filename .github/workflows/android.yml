@@ -5,7 +5,7 @@ on:
     tags:
       - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed
 
-# Gives GitHub Actions permission to write new release pages and upload binary attachments
+# FIX: Explicitly grants the script permission to write binaries to your Releases page
 permissions:
   contents: write
 
@@ -26,29 +26,33 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # Step 3: Grant Linux permissions for the build runner wrapper
+      # FIX: Ensure all Android SDK licenses are accepted on the runner machine
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses || true
+
+      # Step 4: Grant Linux permissions for the build runner wrapper
       - name: Grant Execute Permission for Gradlew
         run: chmod +x ./gradlew
 
-      # Step 4: Run Gradle to compile BOTH the release APK and the release AAB bundle
+      # Step 5: Run Gradle to compile BOTH the release APK and the release AAB bundle
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: Upload the traditional APK package using a secure wildcard lookup
+      # Step 6: Upload the traditional APK package using a secure wildcard lookup
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
           path: app/build/outputs/apk/release/*.apk
 
-      # Step 6: Upload the App Bundle (AAB) package using a secure wildcard lookup
+      # Step 7: Upload the App Bundle (AAB) package using a secure wildcard lookup
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
           name: production-play-store-bundle
           path: app/build/outputs/bundle/release/*.aab
 
-      # Step 7: Push the compiled files directly into the GitHub Release dashboard
+      # Step 8: Push the compiled files directly into the GitHub Release dashboard
       - name: Publish Binaries to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
