@@ -1,20 +1,24 @@
-name: Android Release Build (AAB & APK on Any Tag)
+name: Android Release Build (Publish to Releases Dashboard)
 
 on:
   push:
     tags:
-      - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed from any branch
+      - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed
+
+# Gives GitHub Actions permission to write new release pages and upload binary attachments
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Download your repository's source code
+      # Step 1: Download your repository source code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Step 2: Set up the Java environment required by Gradle
+      # Step 2: Set up Java Environment
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -22,7 +26,7 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # Step 3: Ensure Linux permissions allow the Gradle wrapper script to run
+      # Step 3: Grant Linux permissions for the build runner wrapper
       - name: Grant Execute Permission for Gradlew
         run: chmod +x ./gradlew
 
@@ -30,17 +34,26 @@ jobs:
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: Upload the traditional APK package as a downloadable artifact
+      # Step 5: Upload the traditional APK package using a secure wildcard lookup
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: app/build/outputs/apk/release/sail.apk
+          path: app/build/outputs/apk/release/*.apk
 
-      # Step 6: Upload the App Bundle (AAB) package as a downloadable artifact
+      # Step 6: Upload the App Bundle (AAB) package using a secure wildcard lookup
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
           name: production-play-store-bundle
-          path: app/build/outputs/bundle/release/sail.aab
+          path: app/build/outputs/bundle/release/*.aab
 
+      # Step 7: Push the compiled files directly into the GitHub Release dashboard
+      - name: Publish Binaries to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
