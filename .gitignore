@@ -34,4 +34,4 @@ google-services.json
 *.hprof
 
 # Native binaries and libraries (User requested to exclude)
-app/libs/
+# app/libs/
