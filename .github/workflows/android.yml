@@ -1,9 +1,9 @@
-name: Android Release Build (Resilient CI Pipeline)
+name: Android Release Build (Direct Distribution)
 
 on:
   push:
     tags:
-      - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed from any branch
+      - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed
 
 # Explicitly grants the script permission to write binaries to your Releases page
 permissions:
@@ -30,12 +30,12 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x ./gradlew
 
-      # Step 4: Run Gradle to compile BOTH the release APK and the release AAB bundle
-      - name: Compile Both Packages
-        run: ./gradlew assembleRelease bundleRelease
+      # Step 4: Compile ONLY the release APK
+      - name: Compile Release APK
+        run: ./gradlew assembleRelease
 
-      # Step 5: Sign the generated release APK and AAB using the v1 action with a modern build-tools override
-      - name: Sign Release Artifacts
+      # Step 5: Sign the generated release APK with a modern build-tools override
+      - name: Sign Release APK
         uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
@@ -47,15 +47,13 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: "35.0.0"
 
-      # Step 6: Resiliency Map - Scans directory and logs exact paths for troubleshooting
+      # Step 6: Scans directory and logs exact paths for troubleshooting
       - name: Map Build Outputs Structure
         run: |
           echo "=== Searching for generated APK files ==="
           find . -name "*.apk" -type f
-          echo "=== Searching for generated AAB files ==="
-          find . -name "*.aab" -type f
 
-      # Step 7: Upload the signed APK package (using the output from the signing step)
+      # Step 7: Upload the signed APK package as an action artifact
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
@@ -63,22 +61,13 @@ jobs:
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
           retention-days: 1
 
-      # Step 8: Upload the Play Store App Bundle (AAB) package
-      - name: Upload Play Store AAB
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-play-store-bundle
-          path: "**/build/outputs/bundle/release/*.aab"
-          retention-days: 1
-
-      # Step 9: Push the signed compiled files directly into the GitHub Release dashboard
+      # Step 8: Push the signed APK file directly into the GitHub Release dashboard
       - name: Publish Binaries to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ${{ steps.sign_app.outputs.signedReleaseFile }}
-            **/build/outputs/bundle/release/*.aab
+          files: ${{ steps.sign_app.outputs.signedReleaseFile }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
