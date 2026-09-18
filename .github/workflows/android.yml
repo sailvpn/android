@@ -5,7 +5,6 @@ on:
     tags:
       - 'v*' # Triggers the build whenever a version tag like v1.0.0 is pushed
 
-# Explicitly grants the script permission to write binaries to your Releases page
 permissions:
   contents: write
 
@@ -30,53 +29,49 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x ./gradlew
 
-      # Step 4: Compile ONLY the release APK
+      # Step 4: Compile ONLY the unsigned release APK
       - name: Compile Release APK
         run: ./gradlew assembleRelease
 
-      # Step 5: Sign the generated release APK with a modern build-tools override
-      - name: Sign Release APK
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "35.0.0"
-
-      # Step 6: Rename the weirdly named APK to a clean, user-friendly name
-      - name: Clean Up APK Filename
-        id: rename_apk
+      # Step 5: Decode Keystore and Sign using Native Android SDK Tools (V2 & V3 Scheme)
+      - name: Sign APK with Native apksigner
         run: |
-          OLD_PATH="${{ steps.sign_app.outputs.signedReleaseFile }}"
-          NEW_PATH="app/build/outputs/apk/release/troad-release.apk"
-          mv "$OLD_PATH" "$NEW_PATH"
-          echo "final_apk_path=$NEW_PATH" >> $GITHUB_OUTPUT
+          # 1. Recreate the binary keystore file from your Base64 secret string
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > release.jks
+          
+          # 2. Locate the newest Android build tools pre-installed on the GitHub runner
+          BUILD_TOOLS_DIR=$(dirname $(find /usr/local/lib/android/sdk/build-tools -name apksigner -type f | sort -V | tail -n1))
+          echo "Using Android Build Tools from: $BUILD_TOOLS_DIR"
+          
+          # 3. Zip-align the raw build output file
+          $BUILD_TOOLS_DIR/zipalign -v 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned-release.apk
+          
+          # 4. Perform native modern code signing (Applies V2, V3, and V4 signatures dynamically)
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.jks \
+            --ks-key-alias "${{ secrets.ALIAS }}" \
+            --ks-pass pass:"${{ secrets.KEY_STORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --out troad-release.apk aligned-release.apk
+          
+          # 5. Print verification mapping to the action logs to guarantee V2/V3 success
+          $BUILD_TOOLS_DIR/apksigner verify -v troad-release.apk
 
-      # Step 7: Scans directory and logs exact paths for troubleshooting
-      - name: Map Build Outputs Structure
-        run: |
-          echo "=== Searching for generated APK files ==="
-          find . -name "*.apk" -type f
-
-      # Step 8: Upload the signed, cleanly named APK package as an action artifact
+      # Step 6: Upload the cleanly-named signed APK package as an action artifact
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: ${{ steps.rename_apk.outputs.final_apk_path }}
+          path: troad-release.apk
           retention-days: 1
 
-      # Step 9: Push the clean APK file directly into the GitHub Release dashboard
+      # Step 7: Push the verified final APK file directly into the GitHub Release dashboard
       - name: Publish Binaries to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.rename_apk.outputs.final_apk_path }}
+          files: troad-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
 
