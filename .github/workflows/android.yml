@@ -34,7 +34,18 @@ jobs:
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: Resiliency Map - Scans directory and logs exact paths for troubleshooting
+      # Step 5: Sign the generated release APK and AAB so Android devices can install them
+      - name: Sign Release Artifacts
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
+      # Step 6: Resiliency Map - Scans directory and logs exact paths for troubleshooting
       - name: Map Build Outputs Structure
         run: |
           echo "=== Searching for generated APK files ==="
@@ -42,15 +53,15 @@ jobs:
           echo "=== Searching for generated AAB files ==="
           find . -name "*.aab" -type f
 
-      # Step 6: Upload the traditional APK package using a global directory search
+      # Step 7: Upload the signed APK package (using the output from the signing step)
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: "**/build/outputs/apk/release/*.apk"
+          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
           retention-days: 1
 
-      # Step 7: Upload the App Bundle (AAB) package using a global directory search
+      # Step 8: Upload the Play Store App Bundle (AAB) package
       - name: Upload Play Store AAB
         uses: actions/upload-artifact@v4
         with:
@@ -58,12 +69,13 @@ jobs:
           path: "**/build/outputs/bundle/release/*.aab"
           retention-days: 1
 
-      # Step 8: Push the compiled files directly into the GitHub Release dashboard
+      # Step 9: Push the signed compiled files directly into the GitHub Release dashboard
       - name: Publish Binaries to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            **/build/outputs/apk/release/*.apk
+            ${{ steps.sign_app.outputs.signedReleaseFile }}
             **/build/outputs/bundle/release/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
