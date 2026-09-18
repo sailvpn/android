@@ -96,4 +96,5 @@ dependencies {
 
     // native archives
     implementation(files("libs/troadengine.aar"))
+    implementation(files("libs/troadengine-sources.jar"))
 }
