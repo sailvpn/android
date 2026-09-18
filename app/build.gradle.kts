@@ -28,11 +28,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false // <-- Set this to false to turn off shrinking completely
-
-            // You can also completely remove the line if you prefer,
-            // as it defaults to false automatically.
-
+            isMinifyEnabled = true // <-- Set this to false to turn off shrinking completely
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
