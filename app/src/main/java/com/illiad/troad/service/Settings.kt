@@ -8,7 +8,6 @@ data class Settings(
     val domain: String,
     val sni: String,
     val port: Int,
-    val cacert: String?,
     val crypto: Cryptos,
     val jwt: String?, // Stores JWT or JWT2 string
     val autoRenew: AutoRenew?,
@@ -16,7 +15,7 @@ data class Settings(
     val secret: String?       // Stores the SHA-256 key
 ) {
     val isValid: Boolean
-        get() = domain.isNotBlank() && sni.isNotBlank() && port in 1..65535 && !cacert.isNullOrBlank()
+        get() = domain.isNotBlank() && sni.isNotBlank() && port in 1..65535
                 && (crypto == Cryptos.JWT || crypto == Cryptos.JWT2 || crypto == Cryptos.SHA_256)
 
     /**
@@ -27,7 +26,6 @@ data class Settings(
         get() = when (crypto) {
             Cryptos.JWT, Cryptos.JWT2 -> jwt
             Cryptos.SHA_256 -> secret
-            else -> null
         }
 
     /**

@@ -19,12 +19,11 @@ class SettingsRepoImp(private val tStore: TroadStore) : SettingsRepo {
             tStore.serverDomainFlow,     // 0
             tStore.sniFlow,              // 1
             tStore.serverPortFlow,       // 2
-            tStore.caCertFlow,           // 3
-            tStore.selectedCryptoFlow,   // 4
-            tStore.jwtFlow,              // 5 (Maps to activeToken via JWT/JWT2 rules if needed)
-            tStore.autoRenewFlow,        // 6
-            tStore.durationFlow,         // 7
-            tStore.sharedSecretFlow      // 8
+            tStore.selectedCryptoFlow,   // 3
+            tStore.jwtFlow,              // 4 (Maps to activeToken via JWT/JWT2 rules if needed)
+            tStore.autoRenewFlow,        // 5
+            tStore.durationFlow,         // 6
+            tStore.sharedSecretFlow      // 7
         )
 
         return combine(flows) { array ->
@@ -32,14 +31,13 @@ class SettingsRepoImp(private val tStore: TroadStore) : SettingsRepo {
                 domain = array[0] as? String ?: "",
                 sni = array[1] as? String ?: "",
                 port = array[2] as? Int ?: 443,
-                cacert = array[3] as? String ?: "",
-                crypto = array[4] as? Cryptos ?: Cryptos.JWT,
-                jwt = array[5] as? String, // Cleanly mapped from index 5
+                crypto = array[3] as? Cryptos ?: Cryptos.JWT,
+                jwt = array[4] as? String, // Cleanly mapped from index 5
                 autoRenew = AutoRenew.fromMinutes(
-                    array[6] as? Long ?: 0L
+                    array[5] as? Long ?: 0L
                 ), // Cleanly mapped from index 6
-                duration = array[7] as? Duration, // Cleanly mapped from index 7
-                secret = array[8] as? String // Cleanly mapped from index 8 (No more index 10 crash!)
+                duration = array[6] as? Duration, // Cleanly mapped from index 7
+                secret = array[7] as? String // Cleanly mapped from index 8 (No more index 10 crash!)
             )
         }
             .distinctUntilChanged()

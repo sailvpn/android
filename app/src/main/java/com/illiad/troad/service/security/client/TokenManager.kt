@@ -8,6 +8,7 @@ import com.illiad.troad.service.Settings
 import com.illiad.troad.model.TroadStore
 import com.illiad.troad.service.SettingsUseCase
 import com.illiad.troad.service.security.Cryptos
+import com.illiad.troad.service.security.CaCert.getCertString
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -196,8 +197,7 @@ class TokenManager private constructor(context: Context) {
 
     suspend fun postGenerate(settings: Settings, request: TokenGenerateRequest): Boolean {
         val url = "https://${settings.domain}:${settings.port}/api/auth/token/generate"
-        val freshCacertPemStr = tStore.caCertFlow.firstOrNull()
-        val executionClient = clientFactory.createSecureClient(freshCacertPemStr)
+        val executionClient = clientFactory.createSecureClient(getCertString(appContext))
 
         return try {
             val response = executionClient.post(url) {

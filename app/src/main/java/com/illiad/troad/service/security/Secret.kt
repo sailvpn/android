@@ -33,7 +33,6 @@ object Secret {
                     sha256(secret.encodeToByteArray())
                 }
 
-                else -> null
             }
         } catch (_: Exception) {
             null

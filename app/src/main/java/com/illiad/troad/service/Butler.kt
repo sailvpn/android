@@ -68,8 +68,7 @@ class Butler private constructor(context: Context) {
         // 2. Identify if structural properties shifted
         val needsHardRestart = previousSettings == null ||
                 previousSettings.domain != newSettings.domain ||
-                previousSettings.port != newSettings.port ||
-                previousSettings.cacert != newSettings.cacert
+                previousSettings.port != newSettings.port
 
         // 3. Detect if raw authentication fields changed
         val cryptoChanged = newSettings.crypto != previousSettings?.crypto

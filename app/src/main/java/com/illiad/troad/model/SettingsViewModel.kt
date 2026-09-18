@@ -267,19 +267,6 @@ class SettingsViewModel(
         _password.value = changed
     }
 
-    /**
-     * Saves the CA Certificate content string into the TroadStore.
-     */
-    fun saveCaCert(certContent: String) {
-        viewModelScope.launch {
-            try {
-                tStore.saveCaCert(certContent)
-                Log.d(VM, "CA Cert saved successfully")
-            } catch (e: Exception) {
-                errorMessage = "Failed to save CA Cert: ${e.localizedMessage}"
-            }
-        }
-    }
 
     fun saveJwt(jwtContent: String) {
         viewModelScope.launch {

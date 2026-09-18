@@ -44,8 +44,6 @@ fun SettingsView(
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
 
-    // Dialog / Modal Visibility State Trackers
-    var showCaCertDialog by remember { mutableStateOf(false) }
     var showAcqJWTDialog by remember { mutableStateOf(false) }
     var showJwtDialog by remember { mutableStateOf(false) }
 
@@ -56,14 +54,6 @@ fun SettingsView(
     val secretInput by viewModel.uiSharedSecretInput.collectAsState()
     val cryptoSelected by viewModel.selectedCrypto.collectAsState()
     val renewSelection by viewModel.autoRenew.collectAsState()
-
-    // Autonomous Dialog Window Triggers
-    if (showCaCertDialog) {
-        ConfigCaCertDialog(
-            onDismiss = { showCaCertDialog = false },
-            viewModel = viewModel
-        )
-    }
 
     if (showAcqJWTDialog) {
         AcquireTokenDialog(
@@ -152,19 +142,6 @@ fun SettingsView(
                 singleLine = true,
                 isError = viewModel.errorMessage?.contains("Port", ignoreCase = true) == true
             )
-
-            // CRYPTOGRAPHIC CERTIFICATE IMPORT SECTION
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = { showCaCertDialog = true }
-                ) {
-                    Text("Config CA Cert")
-                }
-            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -328,84 +305,6 @@ fun CryptoSettingsItem(viewModel: SettingsViewModel) {
         )
     }
 }
-
-
-@Composable
-fun ConfigCaCertDialog(
-    onDismiss: () -> Unit,
-    viewModel: SettingsViewModel
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    // Configuration file launcher utilizing Android Storage Access Framework contracts
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri ->
-            uri?.let { selectedUri ->
-                try {
-                    // Safe I/O operation processing text characters via content resolvers
-                    val content = context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                        input.bufferedReader().use { it.readText() }
-                    }
-
-                    content?.let { certString ->
-                        scope.launch {
-                            viewModel.saveCaCert(certString)
-                            Toast.makeText(context, "CA Cert was loaded successfully", Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Fail-safe handler catching corrupted files or storage read denial blocks
-                    Toast.makeText(context, "Failed to parse certificate configuration file", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    )
-
-    // Broad array of exact cryptographic certificate MIME types to handle all major vendor systems
-    val certMimeTypes = arrayOf(
-        "application/x-x509-ca-cert",
-        "application/x-pem-file",
-        "application/pkix-cert",
-        "application/x-pkcs12"
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Config CA Cert") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Text(
-                    text = "Select your certificate file to update the server gateway security configurations.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
-                // Full-width interactive action selector button matching your Wave Blue theme configuration
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        filePickerLauncher.launch(certMimeTypes)
-                    }
-                ) {
-                    Text("Choose Certificate File")
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
 
 @Composable
 fun ConfigJwtDialog(

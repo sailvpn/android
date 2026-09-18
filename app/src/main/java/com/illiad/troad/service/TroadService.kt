@@ -43,8 +43,11 @@ import troadengine.Troadengine
 import java.io.File
 import java.io.IOException
 import androidx.core.graphics.toColorInt
+import com.illiad.troad.Consts.DNS8888
+import com.illiad.troad.Consts.DNS9999
 import com.illiad.troad.Consts.INTENT_DISCONNECT
 import com.illiad.troad.Consts.INTENT_OPEN_APP
+import com.illiad.troad.service.security.CaCert.getCertFile
 
 // 1. CHANGE INHERITANCE: Must be VpnService, manually providing LifecycleOwner
 @SuppressLint("VpnServicePolicy")
@@ -183,8 +186,10 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
                 .setSession(getString(R.string.app_name))
                 .addAddress(tunIp10_8_0_2, 24)
                 .addRoute("0.0.0.0", 0)
-                .addDnsServer("223.5.5.5")
-                .addDnsServer("223.6.6.6")
+                .addDnsServer(DNS1001)
+                .addDnsServer(DNS1111)
+                .addDnsServer(DNS8888)
+                .addDnsServer(DNS9999)
                 .addDisallowedApplication(packageName) // Bypasses loopbacks securely
                 .setMtu(MTU)
                 .establish()
@@ -207,10 +212,6 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
                     butler.activeSettings ?: throw IllegalStateException("VPN Settings not loaded.")
                 val currentHeader = butler.header ?: throw IllegalStateException("no valid header.")
 
-                // SOFTWARE FAIL CHECK: Validate file system write health immediately
-                val certFile = File(applicationContext.cacheDir, "proxy_ca.crt")
-                currentSettings.cacert?.let { certFile.writeText(it) }
-
                 Log.i(TS, "Go Engine Thread Started")
 
                 // blocks here until stopped or network pipe disconnects
@@ -218,7 +219,7 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
                     fd.toLong(),
                     currentSettings.domain + ":" + currentSettings.port.toString(),
                     currentHeader,
-                    certFile.absolutePath,
+                    getCertFile(applicationContext)!!.absolutePath,
                     currentSettings.sni,
                     MTU.toLong()
                 )

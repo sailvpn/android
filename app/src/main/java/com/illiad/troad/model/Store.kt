@@ -22,7 +22,6 @@ object StoreKeys {
     val SELECTED_CRYPTO = stringPreferencesKey("selected_crypto")
     val SHARED_SECRET = stringPreferencesKey("shared_secret")
     val TUN_IP = stringPreferencesKey("tun_ip")
-    val CA_CERT = stringPreferencesKey("ca_cert")
     val JWT_TOKEN = stringPreferencesKey("jwt_token")
     val USERNAME = stringPreferencesKey("username")
     val PASSWORD = stringPreferencesKey("password")
@@ -66,15 +65,6 @@ class TroadStore(appContext: Context) {
     suspend fun saveServerPort(port: Int) {
         context.dataStore.edit { settings ->
             settings[StoreKeys.SERVER_PORT] = port
-        }
-    }
-
-    val caCertFlow: Flow<String> = context.dataStore.data
-        .map { preferences -> preferences[StoreKeys.CA_CERT] ?: "" }
-
-    suspend fun saveCaCert(certContent: String) {
-        context.dataStore.edit { settings ->
-            settings[StoreKeys.CA_CERT] = certContent
         }
     }
 
