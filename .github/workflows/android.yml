@@ -47,27 +47,37 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: "35.0.0"
 
-      # Step 6: Scans directory and logs exact paths for troubleshooting
+      # Step 6: Rename the weirdly named APK to a clean, user-friendly name
+      - name: Clean Up APK Filename
+        id: rename_apk
+        run: |
+          OLD_PATH="${{ steps.sign_app.outputs.signedReleaseFile }}"
+          NEW_PATH="app/build/outputs/apk/release/troad-release.apk"
+          mv "$OLD_PATH" "$NEW_PATH"
+          echo "final_apk_path=$NEW_PATH" >> $GITHUB_OUTPUT
+
+      # Step 7: Scans directory and logs exact paths for troubleshooting
       - name: Map Build Outputs Structure
         run: |
           echo "=== Searching for generated APK files ==="
           find . -name "*.apk" -type f
 
-      # Step 7: Upload the signed APK package as an action artifact
+      # Step 8: Upload the signed, cleanly named APK package as an action artifact
       - name: Upload Testing APK
         uses: actions/upload-artifact@v4
         with:
           name: manual-testing-apk
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          path: ${{ steps.rename_apk.outputs.final_apk_path }}
           retention-days: 1
 
-      # Step 8: Push the signed APK file directly into the GitHub Release dashboard
+      # Step 9: Push the clean APK file directly into the GitHub Release dashboard
       - name: Publish Binaries to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          files: ${{ steps.rename_apk.outputs.final_apk_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
 
