@@ -19,3 +19,14 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Keep all classes inside your native library package
+# Keep the entire GoMobile generated package intact
+-keep class troadengine.** { *; }
+
+# Keep all native JNI system methods and bindings
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Prevent optimization loops from stripping internal Go code structures
+-keep class go.** { *; }
