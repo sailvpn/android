@@ -34,9 +34,9 @@ jobs:
       - name: Compile Both Packages
         run: ./gradlew assembleRelease bundleRelease
 
-      # Step 5: Sign the generated release APK and AAB so Android devices can install them
+      # Step 5: Sign the generated release APK and AAB using the v1 action with a modern build-tools override
       - name: Sign Release Artifacts
-        uses: r0adkll/sign-android-release@v2
+        uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
           releaseDirectory: app/build/outputs/apk/release
@@ -44,6 +44,8 @@ jobs:
           alias: ${{ secrets.ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "35.0.0"
 
       # Step 6: Resiliency Map - Scans directory and logs exact paths for troubleshooting
       - name: Map Build Outputs Structure
@@ -78,4 +80,5 @@ jobs:
             **/build/outputs/bundle/release/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
