@@ -40,7 +40,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import troadengine.Troadengine
-import java.io.File
 import java.io.IOException
 import androidx.core.graphics.toColorInt
 import com.illiad.troad.Consts.DNS8888
