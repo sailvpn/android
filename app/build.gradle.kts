@@ -28,13 +28,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true // Recommended for smaller APKs
+            isMinifyEnabled = false // <-- Set this to false to turn off shrinking completely
+
+            // You can also completely remove the line if you prefer,
+            // as it defaults to false automatically.
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
