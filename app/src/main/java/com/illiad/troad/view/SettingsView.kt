@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
-import androidx.compose.material3.AlertDialogDefaults.containerColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +30,7 @@ import com.illiad.troad.model.SettingsViewModel
 import com.illiad.troad.service.security.Cryptos
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 
 import com.illiad.troad.ui.theme.troadGradients
@@ -40,6 +40,7 @@ import androidx.compose.foundation.background
 @Composable
 fun SettingsView(
     viewModel: SettingsViewModel,
+    mainViewModel: com.illiad.troad.model.MainViewModel,
     onBack: () -> Unit
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
@@ -73,7 +74,26 @@ fun SettingsView(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Server Settings") },
+                title = {
+                    Column {
+                        Text("Server Settings")
+                        if (mainViewModel.cryptoStatus.label.isNotBlank()) {
+                            val statusColor = mainViewModel.cryptoStatus.color
+                            Text(
+                                text = mainViewModel.cryptoStatus.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (statusColor != Color.Unspecified) Color.White else MaterialTheme.colorScheme.tertiary,
+                                modifier = if (statusColor != Color.Unspecified) {
+                                    Modifier
+                                        .padding(top = 2.dp)
+                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .background(statusColor.copy(alpha = 0.8f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                } else Modifier
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         // Utilizes the correct stable localized layout mirror vector class reference

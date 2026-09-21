@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 SettingsView(
                                     viewModel = settingsViewModel,
+                                    mainViewModel = mainViewModel,
                                     onBack = { mainViewModel.navigateTo(Screen.Main) })
                             }
                         }

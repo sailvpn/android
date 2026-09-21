@@ -7,14 +7,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.illiad.troad.Consts.ACTION_CONNECT
 import com.illiad.troad.Consts.ACTION_DISCONNECT
+import com.illiad.troad.service.SettingsRepoImp
+import com.illiad.troad.service.SettingsUseCase
 import com.illiad.troad.service.TroadService
+import com.illiad.troad.service.security.Cryptos
+import com.illiad.troad.service.security.client.TokenManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.periodUntil
 import troadengine.Troadengine
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -34,6 +45,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var currentScreen by mutableStateOf(Screen.Main)
         private set
 
+    var cryptoStatus by mutableStateOf(CryptoStatus())
+        private set
+
+    private var cryptoInfoJob: Job? = null
+
     init {
         // Synchronize initial state with the native engine
         try {
@@ -43,6 +59,54 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             }
         } catch (e: Throwable) {
             Log.e("MainViewModel", "Failed to check initial engine state", e)
+        }
+        startCryptoInfoObserver()
+    }
+
+    private fun startCryptoInfoObserver() {
+        val tStore = TroadStore(app)
+        val settingsUseCase = SettingsUseCase(SettingsRepoImp(tStore))
+        val tokenManager = TokenManager.getInstance(app)
+
+        cryptoInfoJob?.cancel()
+        cryptoInfoJob = viewModelScope.launch {
+            settingsUseCase().collectLatest { settings ->
+                while (isActive) {
+                    cryptoStatus = when (settings.crypto) {
+                        Cryptos.JWT2 -> CryptoStatus("JWT2")
+                        Cryptos.JWT -> {
+                            val now = Clock.System.now()
+                            val expiry = tokenManager.getExpireInstant(settings.jwt)
+                            val remaining = expiry - now
+                            
+                            if (remaining.isNegative()) {
+                                CryptoStatus("JWT: Expired", Color(0xFFF44336))
+                            } else {
+                                val period = now.periodUntil(expiry, TimeZone.currentSystemDefault())
+                                val parts = mutableListOf<String>()
+                                if (period.months > 0) parts.add("${period.months}mo")
+                                if (period.days > 0) parts.add("${period.days}d")
+                                if (period.hours > 0) parts.add("${period.hours}h")
+                                if (period.minutes > 0) parts.add("${period.minutes}m")
+                                
+                                val label = "JWT: " + parts.joinToString(" ")
+                                val color = when {
+                                    remaining.inWholeDays < 1 -> Color(0xFFF44336) // Red
+                                    remaining.inWholeDays < 7 -> Color(0xFFFFC107) // Yellow
+                                    else -> Color(0xFF4CAF50) // Green
+                                }
+                                CryptoStatus(label, color)
+                            }
+                        }
+                        else -> CryptoStatus(settings.crypto.value)
+                    }
+                    if (settings.crypto == Cryptos.JWT) {
+                        delay(60000)
+                    } else {
+                        break
+                    }
+                }
+            }
         }
     }
 

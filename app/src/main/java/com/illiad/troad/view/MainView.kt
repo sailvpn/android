@@ -123,6 +123,22 @@ fun MainView(viewModel: MainViewModel) {
                         style = MaterialTheme.typography.headlineMedium
                     )
 
+                    if (viewModel.cryptoStatus.label.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val statusColor = viewModel.cryptoStatus.color
+                        Text(
+                            text = viewModel.cryptoStatus.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (statusColor != Color.Unspecified) Color.White else MaterialTheme.colorScheme.tertiary,
+                            modifier = if (statusColor != Color.Unspecified) {
+                                Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .background(statusColor.copy(alpha = 0.8f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            } else Modifier
+                        )
+                    }
+
                     // [SPEED DASHBOARD INJECTION SLOT]: Unwired until data acquisition is ready
                 }
 
