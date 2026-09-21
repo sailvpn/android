@@ -45,7 +45,7 @@ fun SettingsView(
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
 
-    var showAcqJWTDialog by remember { mutableStateOf(false) }
+    var showUserPassDialog by remember { mutableStateOf(false) }
     var showJwtDialog by remember { mutableStateOf(false) }
 
     // Stream State Collection from view model architecture layer
@@ -56,9 +56,9 @@ fun SettingsView(
     val cryptoSelected by viewModel.selectedCrypto.collectAsState()
     val renewSelection by viewModel.autoRenew.collectAsState()
 
-    if (showAcqJWTDialog) {
-        AcquireTokenDialog(
-            onDismiss = { showAcqJWTDialog = false },
+    if (showUserPassDialog) {
+        UsernamePasswordDialog(
+            onDismiss = { showUserPassDialog = false },
             viewModel = viewModel
         )
     }
@@ -210,9 +210,9 @@ fun SettingsView(
                 ) {
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
-                        onClick = { showAcqJWTDialog = true }
+                        onClick = { showUserPassDialog = true }
                     ) {
-                        Text("Acquire JWT by Username/Password")
+                        Text("Set Username/Password")
                     }
                 }
             }
@@ -227,7 +227,7 @@ fun SettingsView(
                         modifier = Modifier.weight(1f),
                         onClick = { showJwtDialog = true }
                     ) {
-                        Text("Config JWT")
+                        Text("Set JWT")
                     }
                 }
             }
@@ -400,7 +400,7 @@ fun ConfigJwtDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AcquireTokenDialog(
+fun UsernamePasswordDialog(
     onDismiss: () -> Unit,
     viewModel: SettingsViewModel,
     modifier: Modifier = Modifier
@@ -415,7 +415,7 @@ fun AcquireTokenDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = modifier,
-        title = { Text("Acquire JWT Token") },
+        title = { Text("Input username/password") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -464,12 +464,12 @@ fun AcquireTokenDialog(
                 onClick = {
                     scope.launch {
                         // Triggers the authentication thread over network tunnel hooks safely
-                        val success = viewModel.acquireJwt()
+                        val success = viewModel.ok()
                         if (success) onDismiss()
                     }
                 }
             ) {
-                Text("Acquire")
+                Text("Ok")
             }
         },
         dismissButton = {

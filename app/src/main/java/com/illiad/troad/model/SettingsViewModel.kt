@@ -279,7 +279,7 @@ class SettingsViewModel(
         }
     }
 
-     fun acquireJwt() :Boolean {
+     fun ok() :Boolean {
         return true
     }
 
