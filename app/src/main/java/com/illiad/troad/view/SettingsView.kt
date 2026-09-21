@@ -232,8 +232,9 @@ fun SettingsView(
                 }
             }
 
-            // OPTION CONDITIONAL D: JWT Automatic Validity Recurrence Profile Toggles
+                // OPTION CONDITIONAL D: JWT Automatic Validity Recurrence Profile Toggles
             if (cryptoSelected == Cryptos.JWT) {
+                DurationDropdown(viewModel)
                 TokenRenewDropdown(viewModel)
             }
 
@@ -250,8 +251,6 @@ fun SettingsView(
         }
     }
 }
-
-
 
 @Composable
 fun CryptoSettingsItem(viewModel: SettingsViewModel) {
@@ -362,7 +361,7 @@ fun ConfigJwtDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Config JWT") },
+        title = { Text("Set JWT") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -454,9 +453,6 @@ fun UsernamePasswordDialog(
                     },
                     singleLine = true
                 )
-
-                // Embedded Validity Period Dropdown Selection Layer
-                DurationDropdown(viewModel)
             }
         },
         confirmButton = {
@@ -479,8 +475,6 @@ fun UsernamePasswordDialog(
         }
     )
 }
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
