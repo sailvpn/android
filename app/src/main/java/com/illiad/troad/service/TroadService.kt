@@ -243,13 +243,16 @@ class TroadService : VpnService(), LifecycleOwner, Butler.TunnelInterfaceControl
         Log.d(TS, "Tearing down system VPN routing layouts...")
         butler.stopMonitoring()
 
-        try {
-            Troadengine.stopTroad()
-        } catch (_: Exception) {
-        }
         vpnJob?.cancel()
 
         lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Perform native engine shutdown on IO thread to prevent main thread blocking
+                Troadengine.stopTroad()
+            } catch (e: Exception) {
+                Log.e(TS, "Error during native engine shutdown", e)
+            }
+
             closeInterfaceQuietly(vpnInterface)
             vpnInterface = null
 

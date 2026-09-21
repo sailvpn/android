@@ -144,7 +144,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             val stopTroad = Intent(app.applicationContext, TroadService::class.java).apply {
                 action = ACTION_DISCONNECT
             }
-            ContextCompat.startForegroundService(app, stopTroad)
+            // Use startService instead of startForegroundService for commands to an already running service,
+            // especially when the command is intended to STOP the service.
+            app.startService(stopTroad)
         }
     }
 
