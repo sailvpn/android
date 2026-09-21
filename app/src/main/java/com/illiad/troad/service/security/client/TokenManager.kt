@@ -123,6 +123,44 @@ class TokenManager private constructor(context: Context) {
         }
     }
 
+    /**
+     * Forces an immediate token renewal regardless of expiration status.
+     * Returns the newly generated token if successful, or null otherwise.
+     */
+    suspend fun refreshNow(snapshot: Settings): String? {
+        val user = tStore.usernameFlow.firstOrNull()
+        val pass = tStore.passwordFlow.firstOrNull()
+        val jwt = snapshot.jwt
+
+
+        // Try with existing token first if available
+        if (!jwt.isNullOrEmpty() && getExpireInstant(jwt) > Clock.System.now()) {
+            val success = postGenerate(
+                snapshot,
+                TokenGenerateRequest(
+                    currentToken = jwt,
+                    expirationMinutes = snapshot.duration?.minutes ?: 60L
+                )
+            )
+            if (success) return tStore.jwtFlow.firstOrNull()
+        }
+
+        // Fallback to username/password
+        if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
+            val success = postGenerate(
+                snapshot,
+                TokenGenerateRequest(
+                    username = user,
+                    password = pass,
+                    expirationMinutes = snapshot.duration?.minutes ?: 60L
+                )
+            )
+            if (success) return tStore.jwtFlow.firstOrNull()
+        }
+
+        return null
+    }
+
 
     /**
      * Centralized execution logic for updating an active token lifecycle.

@@ -32,6 +32,11 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import android.content.ContentValues
+import android.provider.MediaStore
+import java.io.OutputStream
 
 import com.illiad.troad.ui.theme.troadGradients
 import androidx.compose.foundation.background
@@ -47,6 +52,11 @@ fun SettingsView(
 
     var showUserPassDialog by remember { mutableStateOf(false) }
     var showJwtDialog by remember { mutableStateOf(false) }
+    var newTokenResult by remember { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
     // Stream State Collection from view model architecture layer
     val domainInput by viewModel.uiServerDomainInput.collectAsState()
@@ -67,6 +77,13 @@ fun SettingsView(
         ConfigJwtDialog(
             onDismiss = { showJwtDialog = false },
             viewModel = viewModel
+        )
+    }
+
+    if (newTokenResult != null) {
+        TokenResultDialog(
+            token = newTokenResult!!,
+            onDismiss = { newTokenResult = null }
         )
     }
 
@@ -212,7 +229,23 @@ fun SettingsView(
                         modifier = Modifier.weight(1f),
                         onClick = { showUserPassDialog = true }
                     ) {
-                        Text("Set Username/Password")
+                        Text("Set user/pass")
+                    }
+
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            scope.launch {
+                                val newToken = viewModel.refreshTokenNow()
+                                if (newToken != null) {
+                                    newTokenResult = newToken
+                                } else {
+                                    Toast.makeText(context, "Token refresh failed", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Refresh Token Now")
                     }
                 }
             }
@@ -249,6 +282,76 @@ fun SettingsView(
                 Text("Return")
             }
         }
+    }
+}
+
+@Composable
+fun TokenResultDialog(
+    token: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New JWT Generated") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Your new token has been generated and saved.")
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                    label = { Text("Token") }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(token))
+                    Toast.makeText(context, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Copy")
+                }
+                TextButton(onClick = {
+                    saveTokenToDownloads(context, token)
+                }) {
+                    Text("Download")
+                }
+            }
+        }
+    )
+}
+
+fun saveTokenToDownloads(context: android.content.Context, token: String) {
+    val resolver = context.contentResolver
+    val contentValues = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, "sail_jwt_${System.currentTimeMillis()}.txt")
+        put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+    }
+
+    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+    if (uri != null) {
+        try {
+            val outputStream: OutputStream? = resolver.openOutputStream(uri)
+            outputStream?.use {
+                it.write(token.toByteArray())
+            }
+            Toast.makeText(context, "Token saved to Downloads", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to save token: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    } else {
+        Toast.makeText(context, "Failed to create file in Downloads", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -414,7 +517,7 @@ fun UsernamePasswordDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = modifier,
-        title = { Text("Input username/password") },
+        title = { Text("Input user/pass") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),

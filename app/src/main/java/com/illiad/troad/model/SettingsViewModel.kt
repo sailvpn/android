@@ -8,7 +8,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.illiad.troad.Consts.VM
+import com.illiad.troad.service.SettingsRepoImp
+import com.illiad.troad.service.SettingsUseCase
 import com.illiad.troad.service.security.Cryptos
+import com.illiad.troad.service.security.client.TokenManager
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -285,6 +288,24 @@ class SettingsViewModel(
 
     fun navigateTo(screen: Screen) {
         currentScreen = screen
+    }
+
+    /**
+     * Triggers a manual token refresh.
+     * Returns the new JWT if successful, or null on failure.
+     */
+    suspend fun refreshTokenNow(): String? {
+        return try {
+            val repository = SettingsRepoImp(tStore)
+            val settingsUseCase = SettingsUseCase(repository)
+            val snapshot = settingsUseCase().first()
+            
+            val tokenManager = TokenManager.getInstance(app)
+            tokenManager.refreshNow(snapshot)
+        } catch (e: Exception) {
+            Log.e(VM, "Manual refresh failed", e)
+            null
+        }
     }
 
 }
