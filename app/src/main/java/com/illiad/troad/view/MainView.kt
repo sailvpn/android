@@ -122,7 +122,7 @@ fun MainView(viewModel: MainViewModel) {
 
                     // Sail VPN Portal External Link Button
                     OutlinedButton(
-                        onClick = { uriHandler.openUri("https://sailsecuretech.com") },
+                        onClick = { uriHandler.openUri("https://app.sailsecuretech.com") },
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.tertiary
                         ),
