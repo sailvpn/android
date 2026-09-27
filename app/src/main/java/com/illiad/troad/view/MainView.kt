@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import com.illiad.troad.model.MainViewModel
 import com.illiad.troad.model.Screen
@@ -21,6 +22,7 @@ import com.illiad.troad.ui.theme.troadGradients
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainView(viewModel: MainViewModel) {
+    val uriHandler = LocalUriHandler.current
 
     // --- Global Error Popup Queue Observer ---
     if (viewModel.errorQueue.isNotEmpty()) {
@@ -116,7 +118,23 @@ fun MainView(viewModel: MainViewModel) {
                         color = MaterialTheme.colorScheme.tertiary
                     )
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Sail VPN Portal External Link Button
+                    OutlinedButton(
+                        onClick = { uriHandler.openUri("https://sailsecuretech.com") },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.tertiary
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Text(text = "Sail VPN Portal")
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
                         text = viewModel.vpnState.statusLabel,
@@ -172,5 +190,3 @@ fun MainView(viewModel: MainViewModel) {
         }
     }
 }
-
-
