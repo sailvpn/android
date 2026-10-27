@@ -59,7 +59,7 @@ class TroadStore(appContext: Context) {
 
     val serverPortFlow: Flow<Int> = context.dataStore.data
         .map { settings ->
-            settings[StoreKeys.SERVER_PORT] ?: 1080
+            settings[StoreKeys.SERVER_PORT] ?: 443
         }
 
     suspend fun saveServerPort(port: Int) {
