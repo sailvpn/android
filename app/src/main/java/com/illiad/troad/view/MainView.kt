@@ -131,7 +131,7 @@ fun MainView(viewModel: MainViewModel) {
                             color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)
                         )
                     ) {
-                        Text(text = "Sail VPN Portal")
+                        Text(text = "SailX Portal")
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
