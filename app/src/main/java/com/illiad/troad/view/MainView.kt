@@ -107,7 +107,7 @@ fun MainView(viewModel: MainViewModel) {
                     )
 
                     Text(
-                        text = "Sail",
+                        text = "SailX",
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.tertiary
                     )
